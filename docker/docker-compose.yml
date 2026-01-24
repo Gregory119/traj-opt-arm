@@ -1,0 +1,20 @@
+name: traj_opt
+
+# Before running any of these services, run 'xhost +local:' to allow
+# connections to the host x server from the container.
+
+services:
+  sim:
+    image: traj_opt:latest
+    build: .
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ${TRAJ_OPT_WS}:/home/ubuntu/local_dir
+    network_mode: host
+    # give the container a command to keep it up without doing any useful work
+    command: tail -f /dev/null
+
+# Refs:
+# - GUI with docker: https://www.howtogeek.com/devops/how-to-run-gui-applications-in-a-docker-container/
