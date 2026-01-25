@@ -41,6 +41,8 @@ void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
   if (act==GLFW_PRESS && key==GLFW_KEY_BACKSPACE) {
     mj_resetData(m, d);
     mj_forward(m, d);
+  } else if (act==GLFW_PRESS && key==GLFW_KEY_ESCAPE){
+      glfwSetWindowShouldClose(window, GLFW_TRUE);
   }
 }
 
