@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <optional>
+#include <sstream>
+#include <chrono>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -129,9 +133,14 @@ int main(int argc, const char** argv) {
     mju_error("Could not initialize GLFW");
   }
 
-  // create window, make OpenGL context current, request v-sync
+  // create window, request v-sync
   GLFWwindow* window = glfwCreateWindow(1200, 900, "Demo", NULL, NULL);
+  // make OpenGL context current (open) in order to use the OpenGL API
   glfwMakeContextCurrent(window);
+  // How many displayed screen frames to wait before updating/swapping the
+  // buffers on a call to glfwSwapBuffers(). Setting this to zero will make
+  // buffer updates occur immediately, leading to frame tearing (buffer update
+  // while display is not complete). This acts on the current context.
   glfwSwapInterval(1);
 
   // initialize visualization data structures
@@ -148,9 +157,10 @@ int main(int argc, const char** argv) {
   glfwSetKeyCallback(window, keyboard);
   glfwSetCursorPosCallback(window, mouse_move);
   glfwSetMouseButtonCallback(window, mouse_button);
-  glfwSetScrollCallback(window, scroll);
-
+  glfwSetScrollCallback(window, scroll);  
+  
   // run main loop, target real-time simulation and 60 fps rendering
+  std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
   while (!glfwWindowShouldClose(window)) {
     // advance interactive simulation for 1/60 sec
     //  Assuming MuJoCo can simulate faster than real-time, which it usually can,
@@ -169,11 +179,31 @@ int main(int argc, const char** argv) {
     mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
     mjr_render(viewport, &scn, &con);
 
+    // calculate and display framerate
+    if (!prev_now){
+        prev_now = std::chrono::steady_clock::now();
+    } else {
+        std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
+        std::chrono::duration<double> dur_s = now - *prev_now;
+
+        const double fps = 1 / dur_s.count();
+        std::ostringstream os;
+        os << fps;
+        mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, viewport,
+                    "FPS", os.str().c_str(), &con);
+
+        prev_now = now;
+    }
+
     // swap OpenGL buffers (blocking call due to v-sync)
+    // GLFW windows use double buffering. One buffer for display and the second
+    // for rendering. After the render frame is update, then it should be
+    // swapped with the display buffer to actually display it.
     glfwSwapBuffers(window);
 
     // process pending GUI events, call GLFW callbacks
     glfwPollEvents();
+
   }
 
   //free visualization storage
@@ -183,6 +213,8 @@ int main(int argc, const char** argv) {
   // free MuJoCo model and data
   mj_deleteData(d);
   mj_deleteModel(m);
+
+  glfwDestroyWindow(window);
 
   // terminate GLFW (crashes with Linux NVidia drivers)
 #if defined(__APPLE__) || defined(_WIN32)
