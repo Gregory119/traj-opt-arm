@@ -9,6 +9,14 @@ services:
     build: .
     environment:
       - DISPLAY=${DISPLAY}
+      # Allow use of the GPU. Follow these instructions to install and test the
+      # nvidia container toolkit:
+      # https://docs.docker.com/engine/containers/resource_constraints/#gpu
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+      # This enables using the CPU for graphics, which is very slow!
+      #- LIBGL_ALWAYS_SOFTWARE=1
+    runtime: nvidia
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ${TRAJ_OPT_WS}:/home/ubuntu/local_dir
