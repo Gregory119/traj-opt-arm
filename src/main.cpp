@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <thread>
 #include <optional>
 #include <sstream>
 #include <chrono>
@@ -125,6 +126,10 @@ int main(int argc, const char** argv) {
     mju_error("Load model error: %s", error);
   }
 
+  // set timestep
+  const int sim_step_ms = 1;
+  m->opt.timestep = sim_step_ms / 1000.0;
+  
   // make data
   d = mj_makeData(m);
 
@@ -158,19 +163,27 @@ int main(int argc, const char** argv) {
   glfwSetCursorPosCallback(window, mouse_move);
   glfwSetMouseButtonCallback(window, mouse_button);
   glfwSetScrollCallback(window, scroll);  
-  
-  // run main loop, target real-time simulation and 60 fps rendering
-  std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
-  while (!glfwWindowShouldClose(window)) {
-    // advance interactive simulation for 1/60 sec
-    //  Assuming MuJoCo can simulate faster than real-time, which it usually can,
-    //  this loop will finish on time for the next frame to be rendered at 60 fps.
-    //  Otherwise add a cpu timer and exit this loop when it is time to render.
-    mjtNum simstart = d->time;
-    while (d->time - simstart < 1.0/60.0) {
-      mj_step(m, d);
-    }
 
+  const int control_step_ms = 10;
+  if (control_step_ms % sim_step_ms != 0){
+      mju_error("control step is not a multiple of the sim step");
+  }
+  // display framerate
+  const int vis_fps = 50;
+  const int frame_step_ms = 1.0 / vis_fps * 1000;
+
+  std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
+  std::optional<double> prev_vis_sim_time;
+  const auto try_disp_frame = [&](const double sim_time){
+      // wait until desired sim duration has passed before attempting to display
+      if (prev_vis_sim_time){
+          const int sim_dur_since_vis_ms = (sim_time - *prev_vis_sim_time)*1000;
+          if (sim_dur_since_vis_ms < frame_step_ms){
+              return;
+          }
+      }
+      prev_vis_sim_time = sim_time;
+      
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(window, &viewport.width, &viewport.height);
@@ -178,11 +191,12 @@ int main(int argc, const char** argv) {
     // update scene and render
     mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
     mjr_render(viewport, &scn, &con);
+    
+    if (prev_now) {
+        // wait to reach target display frame rate
+        std::this_thread::sleep_until(*prev_now + std::chrono::milliseconds(frame_step_ms));
 
-    // calculate and display framerate
-    if (!prev_now){
-        prev_now = std::chrono::steady_clock::now();
-    } else {
+        // measure and display frame rate
         std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
         std::chrono::duration<double> dur_s = now - *prev_now;
 
@@ -191,19 +205,27 @@ int main(int argc, const char** argv) {
         os << fps;
         mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, viewport,
                     "FPS", os.str().c_str(), &con);
-
-        prev_now = now;
     }
+    prev_now = std::chrono::steady_clock::now();
 
     // swap OpenGL buffers (blocking call due to v-sync)
     // GLFW windows use double buffering. One buffer for display and the second
     // for rendering. After the render frame is update, then it should be
     // swapped with the display buffer to actually display it.
     glfwSwapBuffers(window);
-
+  };
+  
+  // run main loop, target real-time simulation and 60 fps rendering
+  while (!glfwWindowShouldClose(window)) {
+    // todo: get next control input
+    
+    // simulate over a control step
+    for (int i{}; i<control_step_ms/sim_step_ms; ++i){
+        try_disp_frame(d->time);
+        mj_step(m, d);
+    }
     // process pending GUI events, call GLFW callbacks
     glfwPollEvents();
-
   }
 
   //free visualization storage
