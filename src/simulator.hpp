@@ -12,6 +12,8 @@
 #include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
+class PeriodicSimTimer;
+
 class Simulator final
 {
 public:
@@ -42,7 +44,7 @@ private:
     static void mouse_move(GLFWwindow *window, double xpos, double ypos);
     static void scroll(GLFWwindow *window, double xoffset, double yoffset);
 
-    void tryDispFrame();
+    void dispFrame();
 
     const int m_control_step_ms;
     const int m_frame_step_ms;
@@ -68,6 +70,6 @@ private:
     static double lastx;
     static double lasty;
 
+    std::vector<PeriodicSimTimer> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
-    std::optional<double> prev_vis_sim_time;
 };

@@ -1,5 +1,38 @@
 #include "simulator.hpp"
 
+#include <functional>
+
+class PeriodicSimTimer
+{
+public:
+    PeriodicSimTimer(const double period, const std::function<void()> &cb)
+        : m_period{period}
+        , m_cb{cb}
+    {}
+
+    void update(const double sim_time)
+    {
+        if (m_last_trigger_time) {
+            const double dur = sim_time - *m_last_trigger_time;
+            if (dur < m_period) {
+                return;
+            }
+        }
+        m_last_trigger_time = sim_time;
+        m_cb();
+    }
+
+    void reset()
+    {
+        m_last_trigger_time.reset();
+    }
+
+private:
+    const double m_period;
+    std::optional<double> m_last_trigger_time;
+    const std::function<void()> m_cb;
+};
+
 bool Simulator::button_left = false;
 bool Simulator::button_middle = false;
 bool Simulator::button_right = false;
@@ -47,6 +80,16 @@ Simulator::Simulator(const std::string &model_path,
     d = mj_makeData(m);
 
     initVis();
+
+    // initialize sim timers
+
+    // frame rate timer
+    m_sim_timers.emplace_back(m_frame_step_ms / 1000.0,
+                              [this]() { dispFrame(); });
+    // control timer
+    m_sim_timers.emplace_back(m_control_step_ms / 1000.0, [this]() {
+        // todo: update trajectory sample
+    });
 }
 
 Simulator::~Simulator()
@@ -69,15 +112,14 @@ Simulator::~Simulator()
 
 void Simulator::run()
 {
-    // run main loop, target real-time simulation and 60 fps rendering
     while (!glfwWindowShouldClose(m_window)) {
-        // todo: get next control input
-
-        // simulate over a control step
-        for (int i{}; i < m_control_step_ms / m_sim_step_ms; ++i) {
-            tryDispFrame();
-            mj_step(m, d);
+        // update timers
+        for (PeriodicSimTimer &timer : m_sim_timers) {
+            timer.update(d->time);
         }
+
+        // step simulation
+        mj_step(m, d);
     }
 }
 
@@ -135,7 +177,9 @@ void Simulator::reset()
     mj_resetData(m, d);
     mj_forward(m, d);
     prev_now.reset();
-    prev_vis_sim_time.reset();
+    for (PeriodicSimTimer &timer : m_sim_timers) {
+        timer.reset();
+    }
 }
 
 // mouse button callback
@@ -207,19 +251,8 @@ void Simulator::scroll(GLFWwindow *window, double xoffset, double yoffset)
                    &(Simulator::getInstance()->cam));
 }
 
-void Simulator::tryDispFrame()
+void Simulator::dispFrame()
 {
-    // current simulation time
-    const double sim_time = d->time;
-    // wait until desired sim duration has passed before attempting to display
-    if (prev_vis_sim_time) {
-        const int sim_dur_since_vis_ms = (sim_time - *prev_vis_sim_time) * 1000;
-        if (sim_dur_since_vis_ms < m_frame_step_ms) {
-            return;
-        }
-    }
-    prev_vis_sim_time = sim_time;
-
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(m_window, &viewport.width, &viewport.height);
