@@ -127,7 +127,9 @@ void Simulator::keyboard(GLFWwindow* window, int key, int scancode, int act, int
 void Simulator::reset()
 {
     mj_resetData(m, d);
-    mj_forward(m, d);    
+    mj_forward(m, d);
+    prev_now.reset();
+    prev_vis_sim_time.reset();
 }
 
 // mouse button callback
