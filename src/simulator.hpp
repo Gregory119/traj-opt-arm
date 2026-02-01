@@ -66,10 +66,10 @@ private:
     mjData *m_data = nullptr;    // MuJoCo data
 
     // Mujoco visualization data structures
-    mjvCamera cam;   // abstract camera
-    mjvOption opt;   // visualization options
-    mjvScene scn;    // abstract scene
-    mjrContext con;  // custom GPU context
+    mjvCamera m_cam;   // abstract camera
+    mjvOption m_opt;   // visualization options
+    mjvScene m_scn;    // abstract scene
+    mjrContext m_con;  // custom GPU context
 
     // GLFW
     GLFWwindow *m_window = nullptr;
@@ -88,5 +88,8 @@ private:
     const std::vector<PeriodicSimTimer *> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
+    // keep a copy of the original trajectory to enable resetting the simulation
+    std::deque<TrajElement> m_ctrl_traj_orig;
+    // actual control trajectory that gets popped during sim
     std::deque<TrajElement> m_ctrl_traj;
 };
