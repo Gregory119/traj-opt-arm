@@ -2,34 +2,35 @@
 
 bool Simulator::button_left = false;
 bool Simulator::button_middle = false;
-bool Simulator::button_right =  false;
+bool Simulator::button_right = false;
 double Simulator::lastx = 0;
 double Simulator::lasty = 0;
 
-
 std::shared_ptr<Simulator> Simulator::getInstance()
 {
-    static std::shared_ptr<Simulator> sim(new Simulator("/home/ubuntu/Downloads/mujoco_install/share/mujoco/model/humanoid/humanoid.xml"));
+    static std::shared_ptr<Simulator> sim(
+        new Simulator("/home/ubuntu/Downloads/mujoco_install/share/mujoco/"
+                      "model/humanoid/humanoid.xml"));
     return sim;
 }
 
-Simulator::Simulator(const std::string& model_path,
+Simulator::Simulator(const std::string &model_path,
                      const int control_step_ms,
                      const int vis_fps,
-                     const int sim_step_ms) :
-    m_control_step_ms{control_step_ms},
-    m_frame_step_ms{static_cast<int>(1.0/vis_fps*1000.0)},
-    m_sim_step_ms{sim_step_ms}
+                     const int sim_step_ms)
+    : m_control_step_ms{control_step_ms}
+    , m_frame_step_ms{static_cast<int>(1.0 / vis_fps * 1000.0)}
+    , m_sim_step_ms{sim_step_ms}
 {
-    if (m_control_step_ms % m_sim_step_ms != 0){
+    if (m_control_step_ms % m_sim_step_ms != 0) {
         mju_error("control step is not a multiple of the sim step");
     }
 
     // load and compile model
-    char error[1000] = "Could not load binary model";
+    char error [1000] = "Could not load binary model";
     // load mjb file
-    if ((model_path.size() > 4) &&
-        (model_path.substr(model_path.size()-4) == ".mjb")) {
+    if ((model_path.size() > 4)
+        && (model_path.substr(model_path.size() - 4) == ".mjb")) {
         m = mj_loadModel(model_path.c_str(), 0);
     } else {
         // load other file
@@ -71,13 +72,13 @@ void Simulator::run()
     // run main loop, target real-time simulation and 60 fps rendering
     while (!glfwWindowShouldClose(m_window)) {
         // todo: get next control input
-    
+
         // simulate over a control step
-        for (int i{}; i<m_control_step_ms/m_sim_step_ms; ++i){
+        for (int i{}; i < m_control_step_ms / m_sim_step_ms; ++i) {
             tryDispFrame();
             mj_step(m, d);
         }
-    }    
+    }
 }
 
 void Simulator::initVis()
@@ -110,18 +111,23 @@ void Simulator::initVis()
     // install GLFW mouse and keyboard callbacks
     glfwSetKeyCallback(m_window, keyboard);
     glfwSetCursorPosCallback(m_window, mouse_move);
-    glfwSetMouseButtonCallback(m_window,mouse_button);
-    glfwSetScrollCallback(m_window,scroll);
+    glfwSetMouseButtonCallback(m_window, mouse_button);
+    glfwSetScrollCallback(m_window, scroll);
 }
 
 // keyboard callback
-void Simulator::keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
-  // backspace: reset simulation
-  if (act==GLFW_PRESS && key==GLFW_KEY_BACKSPACE) {
-      Simulator::getInstance()->reset();
-  } else if (act==GLFW_PRESS && key==GLFW_KEY_ESCAPE){
-      glfwSetWindowShouldClose(window, GLFW_TRUE);
-  }
+void Simulator::keyboard(GLFWwindow *window,
+                         int key,
+                         int scancode,
+                         int act,
+                         int mods)
+{
+    // backspace: reset simulation
+    if (act == GLFW_PRESS && key == GLFW_KEY_BACKSPACE) {
+        Simulator::getInstance()->reset();
+    } else if (act == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
 }
 
 void Simulator::reset()
@@ -133,57 +139,72 @@ void Simulator::reset()
 }
 
 // mouse button callback
-void Simulator::mouse_button(GLFWwindow* window, int button, int act, int mods) {
-  // update button state
-  button_left = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)==GLFW_PRESS);
-  button_middle = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE)==GLFW_PRESS);
-  button_right = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT)==GLFW_PRESS);
+void Simulator::mouse_button(GLFWwindow *window, int button, int act, int mods)
+{
+    // update button state
+    button_left
+        = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+    button_middle
+        = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS);
+    button_right
+        = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
 
-  // update mouse position
-  glfwGetCursorPos(window, &lastx, &lasty);
+    // update mouse position
+    glfwGetCursorPos(window, &lastx, &lasty);
 }
-
 
 // mouse move callback
-void Simulator::mouse_move(GLFWwindow* window, double xpos, double ypos) {
-  // no buttons down: nothing to do
-  if (!button_left && !button_middle && !button_right) {
-    return;
-  }
+void Simulator::mouse_move(GLFWwindow *window, double xpos, double ypos)
+{
+    // no buttons down: nothing to do
+    if (!button_left && !button_middle && !button_right) {
+        return;
+    }
 
-  // compute mouse displacement, save
-  double dx = xpos - lastx;
-  double dy = ypos - lasty;
-  lastx = xpos;
-  lasty = ypos;
+    // compute mouse displacement, save
+    double dx = xpos - lastx;
+    double dy = ypos - lasty;
+    lastx = xpos;
+    lasty = ypos;
 
-  // get current window size
-  int width, height;
-  glfwGetWindowSize(window, &width, &height);
+    // get current window size
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
 
-  // get shift key state
-  bool mod_shift = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)==GLFW_PRESS ||
-                    glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT)==GLFW_PRESS);
+    // get shift key state
+    bool mod_shift
+        = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
+           || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
 
-  // determine action based on mouse button
-  mjtMouse action;
-  if (button_right) {
-    action = mod_shift ? mjMOUSE_MOVE_H : mjMOUSE_MOVE_V;
-  } else if (button_left) {
-    action = mod_shift ? mjMOUSE_ROTATE_H : mjMOUSE_ROTATE_V;
-  } else {
-    action = mjMOUSE_ZOOM;
-  }
+    // determine action based on mouse button
+    mjtMouse action;
+    if (button_right) {
+        action = mod_shift ? mjMOUSE_MOVE_H : mjMOUSE_MOVE_V;
+    } else if (button_left) {
+        action = mod_shift ? mjMOUSE_ROTATE_H : mjMOUSE_ROTATE_V;
+    } else {
+        action = mjMOUSE_ZOOM;
+    }
 
-  // move camera
-  mjv_moveCamera(Simulator::getInstance()->m, action, dx/height, dy/height, &(Simulator::getInstance()->scn), &(Simulator::getInstance()->cam));
+    // move camera
+    mjv_moveCamera(Simulator::getInstance()->m,
+                   action,
+                   dx / height,
+                   dy / height,
+                   &(Simulator::getInstance()->scn),
+                   &(Simulator::getInstance()->cam));
 }
 
-
 // scroll callback
-void Simulator::scroll(GLFWwindow* window, double xoffset, double yoffset) {
-  // emulate vertical mouse motion = 5% of window height
-    mjv_moveCamera(Simulator::getInstance()->m, mjMOUSE_ZOOM, 0, -0.05*yoffset, &(Simulator::getInstance()->scn), &(Simulator::getInstance()->cam));
+void Simulator::scroll(GLFWwindow *window, double xoffset, double yoffset)
+{
+    // emulate vertical mouse motion = 5% of window height
+    mjv_moveCamera(Simulator::getInstance()->m,
+                   mjMOUSE_ZOOM,
+                   0,
+                   -0.05 * yoffset,
+                   &(Simulator::getInstance()->scn),
+                   &(Simulator::getInstance()->cam));
 }
 
 void Simulator::tryDispFrame()
@@ -191,14 +212,14 @@ void Simulator::tryDispFrame()
     // current simulation time
     const double sim_time = d->time;
     // wait until desired sim duration has passed before attempting to display
-    if (prev_vis_sim_time){
-        const int sim_dur_since_vis_ms = (sim_time - *prev_vis_sim_time)*1000;
-        if (sim_dur_since_vis_ms < m_frame_step_ms){
+    if (prev_vis_sim_time) {
+        const int sim_dur_since_vis_ms = (sim_time - *prev_vis_sim_time) * 1000;
+        if (sim_dur_since_vis_ms < m_frame_step_ms) {
             return;
         }
     }
     prev_vis_sim_time = sim_time;
-      
+
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(m_window, &viewport.width, &viewport.height);
@@ -206,20 +227,26 @@ void Simulator::tryDispFrame()
     // update scene and render
     mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
     mjr_render(viewport, &scn, &con);
-    
+
     if (prev_now) {
         // wait to reach target display frame rate
-        std::this_thread::sleep_until(*prev_now + std::chrono::milliseconds(m_frame_step_ms));
+        std::this_thread::sleep_until(
+            *prev_now + std::chrono::milliseconds(m_frame_step_ms));
 
         // measure and display frame rate
-        std::chrono::time_point<std::chrono::steady_clock> now = std::chrono::steady_clock::now();
+        std::chrono::time_point<std::chrono::steady_clock> now
+            = std::chrono::steady_clock::now();
         std::chrono::duration<double> dur_s = now - *prev_now;
 
         const double fps = 1 / dur_s.count();
         std::ostringstream os;
         os << fps;
-        mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMLEFT, viewport,
-                    "FPS", os.str().c_str(), &con);
+        mjr_overlay(mjFONT_NORMAL,
+                    mjGRID_BOTTOMLEFT,
+                    viewport,
+                    "FPS",
+                    os.str().c_str(),
+                    &con);
     }
     prev_now = std::chrono::steady_clock::now();
 
