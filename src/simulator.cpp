@@ -42,8 +42,7 @@ double Simulator::lasty = 0;
 std::shared_ptr<Simulator> Simulator::getInstance()
 {
     static std::shared_ptr<Simulator> sim(
-        new Simulator("/home/ubuntu/Downloads/mujoco_install/share/mujoco/"
-                      "model/humanoid/humanoid.xml"));
+        new Simulator("../model/so101.xml"));
     return sim;
 }
 
