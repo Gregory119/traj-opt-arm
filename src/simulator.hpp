@@ -47,13 +47,15 @@ private:
 
     void dispFrame();
 
+    void updateControl();
+
     const int m_control_step_ms;
     const int m_frame_step_ms;
     const int m_sim_step_ms;
 
     // MuJoCo data structures
-    mjModel *m = nullptr;  // MuJoCo model
-    mjData *d = nullptr;   // MuJoCo data
+    mjModel *m_model = nullptr;  // MuJoCo model
+    mjData *m_data = nullptr;   // MuJoCo data
 
     // Mujoco visualization data structures
     mjvCamera cam;   // abstract camera
@@ -71,6 +73,10 @@ private:
     static double lastx;
     static double lasty;
 
-    std::vector<PeriodicSimTimer> m_sim_timers;
+    // frame rate timer
+    PeriodicSimTimer m_vis_timer;
+    // trajectory sample timer
+    PeriodicSimTimer m_control_timer;
+    std::array<PeriodicSimTimer*,2> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 };
