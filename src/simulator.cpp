@@ -26,18 +26,9 @@ Simulator::Simulator(const std::string &model_path,
     // frame rate timer
     , m_control_timer{PeriodicSimTimer(
           m_control_step_ms / 1000.0,
-          [this](PeriodicSimTimer &) { updateControl(); },
-          false  // disable
+          [this](PeriodicSimTimer &) { updateControl(); }
           )}     // control timer
-    , m_start_control_timer{PeriodicSimTimer(
-          1.0,  // delay before control starts
-          [this](PeriodicSimTimer &this_timer) {
-              // std::cout << "start control sim time: " << m_data->time <<
-              // std::endl;
-              m_control_timer.reset(true);
-              this_timer.reset(false);  // make this timer only trigger once
-          })}
-    , m_sim_timers{{&m_vis_timer, &m_control_timer, &m_start_control_timer}}
+    , m_sim_timers{{&m_vis_timer, &m_control_timer}}
 {
     if (m_control_step_ms % m_sim_step_ms != 0) {
         mju_error("trajectory sample step is not a multiple of the sim step");

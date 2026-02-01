@@ -85,7 +85,6 @@ private:
     PeriodicSimTimer m_vis_timer;
     // control sample timer
     PeriodicSimTimer m_control_timer;
-    PeriodicSimTimer m_start_control_timer;
     const std::vector<PeriodicSimTimer *> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
