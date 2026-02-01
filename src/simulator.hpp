@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -14,12 +15,20 @@
 
 #include "periodic_sim_timer.hpp"
 
+struct TrajElement
+{
+    double time;
+    std::vector<double> val;
+};
+
 class Simulator final
 {
 public:
     static std::shared_ptr<Simulator> getInstance();
 
     ~Simulator();
+
+    void setTrajectory(std::deque<TrajElement> ctrl_traj);
 
     void run();
 
@@ -74,9 +83,11 @@ private:
 
     // frame rate timer
     PeriodicSimTimer m_vis_timer;
-    // trajectory sample timer
+    // control sample timer
     PeriodicSimTimer m_control_timer;
     PeriodicSimTimer m_start_control_timer;
     const std::vector<PeriodicSimTimer *> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
+
+    std::deque<TrajElement> m_ctrl_traj;
 };

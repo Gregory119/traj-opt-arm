@@ -8,6 +8,7 @@ int main(int argc, const char** argv) {
   //   return EXIT_FAILURE;
   // }
 
+    Simulator::getInstance()->setTrajectory({{.time=3.0, .val={1.0, 0.0, 0.0, 0.0, 0.0, 0.0}}});
     Simulator::getInstance()->run();
     
   return EXIT_SUCCESS;

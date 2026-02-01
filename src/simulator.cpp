@@ -84,6 +84,12 @@ Simulator::~Simulator()
 #endif
 }
 
+void Simulator::setTrajectory(std::deque<TrajElement> ctrl_traj)
+{
+    // todo: validate size of state
+    m_ctrl_traj = std::move(ctrl_traj);
+}
+
 void Simulator::run()
 {
     while (!glfwWindowShouldClose(m_window)) {
@@ -269,7 +275,27 @@ void Simulator::dispFrame()
 
 void Simulator::updateControl()
 {
-    // std::cout << "updateControl()" << std::endl;
-    //  todo: update trajectory sample
-    m_data->ctrl [0] = 1.0;
+    // std::cout << "updateControl() time: " << m_data->time << std::endl;
+
+    // get the last control input up to the current time
+    std::optional<TrajElement> e;
+    while (!m_ctrl_traj.empty() && (m_ctrl_traj.front().time < m_data->time)) {
+        e = m_ctrl_traj.front();
+        m_ctrl_traj.pop_front();
+    }
+    if (!e) {
+        // Useable control not found. This can occur if sim time has not past
+        // the first trajectory element. This can also occur if the trajectory
+        // has not been set.
+        return;
+    }
+    // Put the found trajectory element back on the front of the queue in case
+    // it needs to be used for the next update.  This means that once the time
+    // has past through the entire trajectory, the last element will always be
+    // used for the control input.
+    m_ctrl_traj.push_front(*e);
+
+    for (size_t i{}; i < e->val.size(); ++i) {
+        m_data->ctrl [i] = e->val [i];
+    }
 }
