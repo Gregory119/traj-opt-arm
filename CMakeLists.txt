@@ -15,7 +15,7 @@ find_package(mujoco REQUIRED)
 find_package(glfw3 REQUIRED)
 
 # Add your executable target
-add_executable(traj_opt_arm src/main.cpp src/simulator.cpp)
+add_executable(traj_opt_arm src/main.cpp src/simulator.cpp src/periodic_sim_timer.cpp)
 
 target_include_directories(traj_opt_arm PRIVATE ${PROJECT_SOURCE_DIR}/src)
 

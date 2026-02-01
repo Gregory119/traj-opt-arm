@@ -1,38 +1,5 @@
 #include "simulator.hpp"
 
-#include <functional>
-
-class PeriodicSimTimer
-{
-public:
-    PeriodicSimTimer(const double period, const std::function<void()> &cb)
-        : m_period{period}
-        , m_cb{cb}
-    {}
-
-    void update(const double sim_time)
-    {
-        if (m_last_trigger_time) {
-            const double dur = sim_time - *m_last_trigger_time;
-            if (dur < m_period) {
-                return;
-            }
-        }
-        m_last_trigger_time = sim_time;
-        m_cb();
-    }
-
-    void reset()
-    {
-        m_last_trigger_time.reset();
-    }
-
-private:
-    const double m_period;
-    std::optional<double> m_last_trigger_time;
-    const std::function<void()> m_cb;
-};
-
 bool Simulator::button_left = false;
 bool Simulator::button_middle = false;
 bool Simulator::button_right = false;

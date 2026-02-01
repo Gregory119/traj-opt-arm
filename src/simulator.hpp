@@ -1,5 +1,7 @@
 #pragma once
 
+#include "periodic_sim_timer.hpp"
+
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -12,7 +14,6 @@
 #include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
-class PeriodicSimTimer;
 
 class Simulator final
 {
