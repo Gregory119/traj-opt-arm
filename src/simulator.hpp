@@ -66,10 +66,10 @@ private:
     mjData *m_data = nullptr;    // MuJoCo data
 
     // Mujoco visualization data structures
-    mjvCamera cam;   // abstract camera
-    mjvOption opt;   // visualization options
-    mjvScene scn;    // abstract scene
-    mjrContext con;  // custom GPU context
+    mjvCamera m_cam;   // abstract camera
+    mjvOption m_opt;   // visualization options
+    mjvScene m_scn;    // abstract scene
+    mjrContext m_con;  // custom GPU context
 
     // GLFW
     GLFWwindow *m_window = nullptr;

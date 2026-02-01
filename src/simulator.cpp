@@ -26,8 +26,7 @@ Simulator::Simulator(const std::string &model_path,
     // frame rate timer
     , m_control_timer{PeriodicSimTimer(
           m_control_step_ms / 1000.0,
-          [this](PeriodicSimTimer &) { updateControl(); }
-          )}     // control timer
+          [this](PeriodicSimTimer &) { updateControl(); })}  // control timer
     , m_sim_timers{{&m_vis_timer, &m_control_timer}}
 {
     if (m_control_step_ms % m_sim_step_ms != 0) {
@@ -60,8 +59,8 @@ Simulator::Simulator(const std::string &model_path,
 Simulator::~Simulator()
 {
     // free visualization storage
-    mjv_freeScene(&scn);
-    mjr_freeContext(&con);
+    mjv_freeScene(&m_scn);
+    mjr_freeContext(&m_con);
 
     // free MuJoCo model and data
     mj_deleteData(m_data);
@@ -113,14 +112,15 @@ void Simulator::initVis()
     glfwSwapInterval(1);
 
     // initialize visualization data structures
-    mjv_defaultCamera(&cam);
-    mjv_defaultOption(&opt);
-    mjv_defaultScene(&scn);
-    mjr_defaultContext(&con);
+    mjv_defaultCamera(&m_cam);
+    m_cam.distance = 1.5;
+    mjv_defaultOption(&m_opt);
+    mjv_defaultScene(&m_scn);
+    mjr_defaultContext(&m_con);
 
     // create scene and context
-    mjv_makeScene(m_model, &scn, 2000);
-    mjr_makeContext(m_model, &con, mjFONTSCALE_150);
+    mjv_makeScene(m_model, &m_scn, 2000);
+    mjr_makeContext(m_model, &m_con, mjFONTSCALE_150);
 
     // install GLFW mouse and keyboard callbacks
     glfwSetKeyCallback(m_window, keyboard);
@@ -208,8 +208,8 @@ void Simulator::mouse_move(GLFWwindow *window, double xpos, double ypos)
                    action,
                    dx / height,
                    dy / height,
-                   &(Simulator::getInstance()->scn),
-                   &(Simulator::getInstance()->cam));
+                   &(Simulator::getInstance()->m_scn),
+                   &(Simulator::getInstance()->m_cam));
 }
 
 // scroll callback
@@ -220,8 +220,8 @@ void Simulator::scroll(GLFWwindow *window, double xoffset, double yoffset)
                    mjMOUSE_ZOOM,
                    0,
                    -0.05 * yoffset,
-                   &(Simulator::getInstance()->scn),
-                   &(Simulator::getInstance()->cam));
+                   &(Simulator::getInstance()->m_scn),
+                   &(Simulator::getInstance()->m_cam));
 }
 
 void Simulator::dispFrame()
@@ -231,8 +231,8 @@ void Simulator::dispFrame()
     glfwGetFramebufferSize(m_window, &viewport.width, &viewport.height);
 
     // update scene and render
-    mjv_updateScene(m_model, m_data, &opt, NULL, &cam, mjCAT_ALL, &scn);
-    mjr_render(viewport, &scn, &con);
+    mjv_updateScene(m_model, m_data, &m_opt, NULL, &m_cam, mjCAT_ALL, &m_scn);
+    mjr_render(viewport, &m_scn, &m_con);
 
     if (prev_now) {
         // wait to reach target display frame rate
@@ -252,7 +252,7 @@ void Simulator::dispFrame()
                     viewport,
                     "FPS",
                     os.str().c_str(),
-                    &con);
+                    &m_con);
     }
     prev_now = std::chrono::steady_clock::now();
 
