@@ -1,37 +1,6 @@
 #include "simulator.hpp"
 
-#include <functional>
-
-class PeriodicSimTimer
-{
-public:
-    PeriodicSimTimer(const double period, const std::function<void()> &cb)
-        : m_period{period}
-        , m_cb{cb}
-    {}
-
-    void update(const double sim_time)
-    {
-        if (m_last_trigger_time) {
-            const double dur = sim_time - *m_last_trigger_time;
-            if (dur < m_period) {
-                return;
-            }
-        }
-        m_last_trigger_time = sim_time;
-        m_cb();
-    }
-
-    void reset()
-    {
-        m_last_trigger_time.reset();
-    }
-
-private:
-    const double m_period;
-    std::optional<double> m_last_trigger_time;
-    const std::function<void()> m_cb;
-};
+#include <iostream>
 
 bool Simulator::button_left = false;
 bool Simulator::button_middle = false;
@@ -41,9 +10,7 @@ double Simulator::lasty = 0;
 
 std::shared_ptr<Simulator> Simulator::getInstance()
 {
-    static std::shared_ptr<Simulator> sim(
-        new Simulator("/home/ubuntu/Downloads/mujoco_install/share/mujoco/"
-                      "model/humanoid/humanoid.xml"));
+    static std::shared_ptr<Simulator> sim(new Simulator("../model/so101.xml"));
     return sim;
 }
 
@@ -54,9 +21,17 @@ Simulator::Simulator(const std::string &model_path,
     : m_control_step_ms{control_step_ms}
     , m_frame_step_ms{static_cast<int>(1.0 / vis_fps * 1000.0)}
     , m_sim_step_ms{sim_step_ms}
+    , m_vis_timer{PeriodicSimTimer(m_frame_step_ms / 1000.0,
+                                   [this](PeriodicSimTimer &) { dispFrame(); })}
+    // frame rate timer
+    , m_control_timer{PeriodicSimTimer(
+          m_control_step_ms / 1000.0,
+          [this](PeriodicSimTimer &) { updateControl(); }
+          )}     // control timer
+    , m_sim_timers{{&m_vis_timer, &m_control_timer}}
 {
     if (m_control_step_ms % m_sim_step_ms != 0) {
-        mju_error("control step is not a multiple of the sim step");
+        mju_error("trajectory sample step is not a multiple of the sim step");
     }
 
     // load and compile model
@@ -64,32 +39,22 @@ Simulator::Simulator(const std::string &model_path,
     // load mjb file
     if ((model_path.size() > 4)
         && (model_path.substr(model_path.size() - 4) == ".mjb")) {
-        m = mj_loadModel(model_path.c_str(), 0);
+        m_model = mj_loadModel(model_path.c_str(), 0);
     } else {
         // load other file
-        m = mj_loadXML(model_path.c_str(), 0, error, 1000);
+        m_model = mj_loadXML(model_path.c_str(), 0, error, 1000);
     }
-    if (!m) {
+    if (!m_model) {
         mju_error("Load model error: %s", error);
     }
 
     // set timestep
-    m->opt.timestep = m_sim_step_ms / 1000.0;
+    m_model->opt.timestep = m_sim_step_ms / 1000.0;
 
     // make data
-    d = mj_makeData(m);
+    m_data = mj_makeData(m_model);
 
     initVis();
-
-    // initialize sim timers
-
-    // frame rate timer
-    m_sim_timers.emplace_back(m_frame_step_ms / 1000.0,
-                              [this]() { dispFrame(); });
-    // control timer
-    m_sim_timers.emplace_back(m_control_step_ms / 1000.0, [this]() {
-        // todo: update trajectory sample
-    });
 }
 
 Simulator::~Simulator()
@@ -99,8 +64,8 @@ Simulator::~Simulator()
     mjr_freeContext(&con);
 
     // free MuJoCo model and data
-    mj_deleteData(d);
-    mj_deleteModel(m);
+    mj_deleteData(m_data);
+    mj_deleteModel(m_model);
 
     glfwDestroyWindow(m_window);
 
@@ -110,16 +75,22 @@ Simulator::~Simulator()
 #endif
 }
 
+void Simulator::setTrajectory(std::deque<TrajElement> ctrl_traj)
+{
+    // todo: validate size of state
+    m_ctrl_traj = std::move(ctrl_traj);
+}
+
 void Simulator::run()
 {
     while (!glfwWindowShouldClose(m_window)) {
         // update timers
-        for (PeriodicSimTimer &timer : m_sim_timers) {
-            timer.update(d->time);
+        for (PeriodicSimTimer *timer : m_sim_timers) {
+            timer->update(m_data->time);
         }
 
         // step simulation
-        mj_step(m, d);
+        mj_step(m_model, m_data);
     }
 }
 
@@ -147,8 +118,8 @@ void Simulator::initVis()
     mjr_defaultContext(&con);
 
     // create scene and context
-    mjv_makeScene(m, &scn, 2000);
-    mjr_makeContext(m, &con, mjFONTSCALE_150);
+    mjv_makeScene(m_model, &scn, 2000);
+    mjr_makeContext(m_model, &con, mjFONTSCALE_150);
 
     // install GLFW mouse and keyboard callbacks
     glfwSetKeyCallback(m_window, keyboard);
@@ -174,11 +145,11 @@ void Simulator::keyboard(GLFWwindow *window,
 
 void Simulator::reset()
 {
-    mj_resetData(m, d);
-    mj_forward(m, d);
+    mj_resetData(m_model, m_data);
+    mj_forward(m_model, m_data);
     prev_now.reset();
-    for (PeriodicSimTimer &timer : m_sim_timers) {
-        timer.reset();
+    for (PeriodicSimTimer *timer : m_sim_timers) {
+        timer->reset();
     }
 }
 
@@ -231,7 +202,7 @@ void Simulator::mouse_move(GLFWwindow *window, double xpos, double ypos)
     }
 
     // move camera
-    mjv_moveCamera(Simulator::getInstance()->m,
+    mjv_moveCamera(Simulator::getInstance()->m_model,
                    action,
                    dx / height,
                    dy / height,
@@ -243,7 +214,7 @@ void Simulator::mouse_move(GLFWwindow *window, double xpos, double ypos)
 void Simulator::scroll(GLFWwindow *window, double xoffset, double yoffset)
 {
     // emulate vertical mouse motion = 5% of window height
-    mjv_moveCamera(Simulator::getInstance()->m,
+    mjv_moveCamera(Simulator::getInstance()->m_model,
                    mjMOUSE_ZOOM,
                    0,
                    -0.05 * yoffset,
@@ -258,7 +229,7 @@ void Simulator::dispFrame()
     glfwGetFramebufferSize(m_window, &viewport.width, &viewport.height);
 
     // update scene and render
-    mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
+    mjv_updateScene(m_model, m_data, &opt, NULL, &cam, mjCAT_ALL, &scn);
     mjr_render(viewport, &scn, &con);
 
     if (prev_now) {
@@ -291,4 +262,31 @@ void Simulator::dispFrame()
 
     // process pending GUI events, call GLFW callbacks
     glfwPollEvents();
+}
+
+void Simulator::updateControl()
+{
+    // std::cout << "updateControl() time: " << m_data->time << std::endl;
+
+    // get the last control input up to the current time
+    std::optional<TrajElement> e;
+    while (!m_ctrl_traj.empty() && (m_ctrl_traj.front().time < m_data->time)) {
+        e = m_ctrl_traj.front();
+        m_ctrl_traj.pop_front();
+    }
+    if (!e) {
+        // Useable control not found. This can occur if sim time has not past
+        // the first trajectory element. This can also occur if the trajectory
+        // has not been set.
+        return;
+    }
+    // Put the found trajectory element back on the front of the queue in case
+    // it needs to be used for the next update.  This means that once the time
+    // has past through the entire trajectory, the last element will always be
+    // used for the control input.
+    m_ctrl_traj.push_front(*e);
+
+    for (size_t i{}; i < e->val.size(); ++i) {
+        m_data->ctrl [i] = e->val [i];
+    }
 }
