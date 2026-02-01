@@ -88,5 +88,8 @@ private:
     const std::vector<PeriodicSimTimer *> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
+    // keep a copy of the original trajectory to enable resetting the simulation
+    std::deque<TrajElement> m_ctrl_traj_orig;
+    // actual control trajectory that gets popped during sim
     std::deque<TrajElement> m_ctrl_traj;
 };

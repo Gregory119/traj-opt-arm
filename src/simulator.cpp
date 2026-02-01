@@ -78,7 +78,8 @@ Simulator::~Simulator()
 void Simulator::setTrajectory(std::deque<TrajElement> ctrl_traj)
 {
     // todo: validate size of state
-    m_ctrl_traj = std::move(ctrl_traj);
+    m_ctrl_traj_orig = std::move(ctrl_traj);
+    m_ctrl_traj = m_ctrl_traj_orig;
 }
 
 void Simulator::run()
@@ -151,6 +152,7 @@ void Simulator::reset()
     for (PeriodicSimTimer *timer : m_sim_timers) {
         timer->reset();
     }
+    m_ctrl_traj = m_ctrl_traj_orig;
 }
 
 // mouse button callback
