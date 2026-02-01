@@ -1,7 +1,5 @@
 #pragma once
 
-#include "periodic_sim_timer.hpp"
-
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
+#include "periodic_sim_timer.hpp"
 
 class Simulator final
 {
@@ -55,7 +54,7 @@ private:
 
     // MuJoCo data structures
     mjModel *m_model = nullptr;  // MuJoCo model
-    mjData *m_data = nullptr;   // MuJoCo data
+    mjData *m_data = nullptr;    // MuJoCo data
 
     // Mujoco visualization data structures
     mjvCamera cam;   // abstract camera
@@ -77,6 +76,7 @@ private:
     PeriodicSimTimer m_vis_timer;
     // trajectory sample timer
     PeriodicSimTimer m_control_timer;
-    std::array<PeriodicSimTimer*,2> m_sim_timers;
+    PeriodicSimTimer m_start_control_timer;
+    const std::vector<PeriodicSimTimer *> m_sim_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 };
