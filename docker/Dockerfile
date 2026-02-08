@@ -21,6 +21,13 @@ RUN mkdir mujoco_build && cd mujoco_build && cmake ../mujoco && cmake --build . 
 RUN mkdir mujoco_install && cd mujoco_build && cmake ../mujoco -DCMAKE_INSTALL_PREFIX=/home/ubuntu/Downloads/mujoco_install && cmake --install .
 ENV CMAKE_PREFIX_PATH=/home/ubuntu/Downloads/mujoco_install
 
+###################################################
+# install IPOPT optimization library
+###################################################
+RUN apt-get install -y coinor-libipopt-dev
 
+###################################################
+# create directory to be mapped
+###################################################
 RUN mkdir /home/ubuntu/local_dir
 WORKDIR /home/ubuntu/local_dir
