@@ -1,6 +1,7 @@
 #include <iostream>
 
-#include "IpIpoptApplication.hpp"
+
+#include <IpIpoptApplication.hpp>
 #include "hs071_nlp.hpp"
 
 int main(int /*argc*/, char ** /*argv*/)
