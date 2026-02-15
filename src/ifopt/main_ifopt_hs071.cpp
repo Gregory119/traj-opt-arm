@@ -5,8 +5,6 @@
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
 
-#include <IpIpoptApplication.hpp>
-
 #include <iostream>
 
 
