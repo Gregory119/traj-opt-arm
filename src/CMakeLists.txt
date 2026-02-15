@@ -8,6 +8,7 @@
 # Otherwise, it relies on CMAKE_PREFIX_PATH or standard system paths.
 find_package(mujoco REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(ifopt)
 
 # --- manually add IPOPT as a library ---
 add_library(ipopt SHARED IMPORTED)
@@ -48,3 +49,4 @@ target_link_libraries(
 # target_link_libraries(my_app PUBLIC OpenGL::OpenGL glfw)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)

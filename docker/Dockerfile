@@ -27,6 +27,15 @@ ENV CMAKE_PREFIX_PATH=/home/ubuntu/Downloads/mujoco_install
 RUN apt-get install -y coinor-libipopt-dev
 
 ###################################################
+# install IFOPT optimization library wrapper
+###################################################
+# install Eigen
+RUN apt-get install -y libeigen3-dev
+
+# build and install ifopt
+RUN git clone https://github.com/ethz-adrl/ifopt.git && cd ifopt && mkdir build && cd build && cmake .. && make && make install
+
+###################################################
 # create directory to be mapped
 ###################################################
 RUN mkdir /home/ubuntu/local_dir
