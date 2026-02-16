@@ -25,14 +25,27 @@ static double now_sec_monotonic() { //timing function
 }
 
 int main(int argc, char** argv) {
-    const char* device = (argc >= 2) ? argv[1] : "/dev/ttyACM0"; // path to device
+    std::string device = (argc >= 2) ? argv[1] : "/dev/ttyACM0";
+    // gotta replace this with a new initialization of a SO101Bus object I think
+    SO101Bus arm;
+    if (!arm.connect(device)) {
+        std::fprintf(stderr, "cant open %s: %s\n", device.c_str(), std::strerror(errno));
+        return 1;
+    }
+
+    int fd = arm.fd();
+
+
+    //const char* device = (argc >= 2) ? argv[1] : "/dev/ttyACM0"; // path to device
     double rate_hz = (argc >= 3) ? std::atof(argv[2]) : 10.0; // set the rewrite rate
+
+
     if (rate_hz <= 0.1) rate_hz = 0.1;
     if (rate_hz > 100.0) rate_hz = 100.0;
 
-    int fd = so101::open_port_1Mbps(device); // open port to read data
+    
     if (fd < 0) {
-        std::fprintf(stderr, "cant open %s: %s\n", device, std::strerror(errno)); // return error code and close port if configuration fails
+        std::fprintf(stderr, "cant open %s: %s\n", device.c_str(), std::strerror(errno)); // return error code and close port if configuration fails
         return 1;
     }
 
@@ -51,18 +64,19 @@ int main(int argc, char** argv) {
 
         const double t = now_sec_monotonic() - t0; // measure time since the start of the program
         // print column descriptions
-        std::printf("SO-101 Servo State (IDs 1..6)   t=%.2f s   rate=%.1f Hz   device=%s\n", t, rate_hz, device);
+        std::printf("SO-101 Servo State (IDs 1..6)   t=%.2f s   rate=%.1f Hz   device=%s\n", t, rate_hz, device.c_str());
         std::printf("--------------------------------------------------------------------------------\n");
         std::printf(" ID |  Pos   |  Speed  |  Load   |  Volt  | Temp | Err | Raw (8 bytes @0x38)\n");
         std::printf("--------------------------------------------------------------------------------\n");
 
         for (int id = 1; id <= 6; ++id) { //iterate through all 6 servo IDs(generalize for any ID set later)
-            so101::ServoStateBasic st{}; // initialize ServoStateBasic object. Data written to here
-            bool ok = so101::feetech_read_state_basic(fd, (uint8_t)id, &st, 40); //read the state for the current servo ID, returns true if valid packet is received
+            //add class object here too
+            SO101Bus::ServoStateBasic st{}; // initialize ServoStateBasic object. Data written to here
+            bool ok = SO101Bus::feetech_read_state_basic(fd, (uint8_t)id, &st, 40); //read the state for the current servo ID, returns true if valid packet is received
 
             if (!ok) { // execute on failed read
                 // no reply then show ping
-                bool alive = so101::feetech_ping(fd, (uint8_t)id, 10);
+                bool alive = SO101Bus::feetech_ping(fd, (uint8_t)id, 10);
                 std::printf(" %2d |  ----  |  ----   |  ----   |  ----  | ---- | %s |\n",
                             id, alive ? "PING" : "----"); //replace data display for the current ID with this
                 continue; // skip current iteration
@@ -92,7 +106,7 @@ int main(int argc, char** argv) {
         usleep(period_us); // wait a pre determined amount of microseconds before proceeding
     }
 
-    ::close(fd); // close the file descriptor after program termination
+    arm.disconnect(); // close the file descriptor after program termination
 
     std::printf("\033[H\033[JStopped.\n");
     return 0;
