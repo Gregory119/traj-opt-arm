@@ -8,6 +8,8 @@
 # Otherwise, it relies on CMAKE_PREFIX_PATH or standard system paths.
 find_package(mujoco REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(Threads REQUIRED)
+
 
 # --- manually add IPOPT as a library ---
 add_library(ipopt SHARED IMPORTED)
@@ -33,14 +35,46 @@ add_compile_definitions(HAVE_CSTDDEF)
 #######################################################################
 # Executeables
 #######################################################################
-add_executable(traj_opt_arm main.cpp simulator.cpp periodic_sim_timer.cpp)
-target_include_directories(traj_opt_arm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_executable(traj_opt_arm main.cpp simulator.cpp periodic_sim_timer.cpp hardware/so101_bus.cpp )
+target_include_directories(traj_opt_arm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/hardware)
 target_link_libraries(
   traj_opt_arm
   mujoco::mujoco
   glfw
   ipopt
+  Threads::Threads
 )
+
+
+add_executable(so101_trajectory_execution
+  hardware/so101_trajectory_execution.cpp
+  hardware/so101_bus.cpp
+)
+
+target_include_directories(so101_trajectory_execution PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/hardware
+)
+
+target_link_libraries(so101_trajectory_execution
+  Threads::Threads
+)
+
+
+add_executable(read_servo_params
+  hardware/read_servo_params.cpp
+  hardware/so101_bus.cpp
+)
+
+target_include_directories(read_servo_params PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/hardware
+)
+
+target_link_libraries(read_servo_params
+  Threads::Threads
+)
+
 
 # If your application uses windowing (e.g., for a viewer using GLFW), 
 # you may need to find and link additional libraries like OpenGL and GLFW.
