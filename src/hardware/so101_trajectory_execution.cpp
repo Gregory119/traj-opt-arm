@@ -18,6 +18,7 @@ int main(int argc, char** argv) {
   SO101Bus::Config cfg;
   if (argc >= 2) cfg.device = argv[1]; // /dev/ttyACM0
   cfg.final_settle_ms = 1200;
+  cfg.record_timing_stats = true;
 
   SO101Bus bus(cfg);
   if (!bus.connect()) {
@@ -26,13 +27,21 @@ int main(int argc, char** argv) {
   }
 
   std::deque<TrajElement> traj;
+  /*
   traj.push_back(wp(0.0,  90,  45,  110,  90,  90,  0));
   traj.push_back(wp(1.0, 100,  90,  110,  90,  45,  0));
   traj.push_back(wp(2.0, 110, 45,  110,  90,  135,  0));
   traj.push_back(wp(3.0,  90, 90,  110, 100,  90,  0));
   traj.push_back(wp(4.0,  60,  45,  110, 110,  45, 0));
   traj.push_back(wp(5.0,  70,  90,  110,  90,  135,  0));
-
+  */
+  
+  const double dt = 0.020; //step in ms
+  const double T  = 5.0; //total time
+  const int steps = static_cast<int>(T / dt); 
+  for (int k = 0; k <= steps; ++k) {
+    traj.push_back(wp(k * dt, 90, 45, 110, 90, 90, 0));
+  }
 
 
   if (!bus.execute_traj_full(traj)) {

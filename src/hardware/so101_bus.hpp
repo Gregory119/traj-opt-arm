@@ -44,6 +44,20 @@ public:
   struct Config {
     std::string device{"/dev/ttyACM0"};
     std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
+
+    //flags
+    bool ping_on_connect{true};
+    bool enable_status_poll{false}; 
+    bool record_timing_stats{false};
+
+    int sync_write_timeout_ms{0};
+    int status_read_timeout_ms{25};
+    int status_poll_period_ms{15};
+    int pos_tol_ticks{100};
+    int comms_dead_ms{3000};
+    int stable_polls_required{2};
+
+
     int ping_timeout_ms{25};
     int step_budget_ms{600};
     int final_settle_ms{1500};
@@ -113,6 +127,7 @@ public:
 
   // position only sync write reads the first uint16_t in each cell as position
   static bool feetech_sync_write(int fd, const std::vector<std::vector<std::uint16_t>>& line);
+  static bool feetech_sync_write(int fd, const std::vector<std::vector<std::uint16_t>>& line, int timeout_ms);
 
 private:
   bool ensure_connected_();

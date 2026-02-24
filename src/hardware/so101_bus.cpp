@@ -161,12 +161,14 @@ bool SO101Bus::connect() {
     return false;
   }
 
-  //ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
+  //if flag is set to true, ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
   // return false if one doesn't reply
-  if (!SO101Bus::ping_all(port_.fd(), cfg_.ids, cfg_.ping_timeout_ms)) {
-    std::fprintf(stderr, "one or more servos did not reply to ping\n");
-    port_.close();
-    return false;
+  if(cfg_.ping_on_connect){
+      if (!SO101Bus::ping_all(port_.fd(), cfg_.ids, cfg_.ping_timeout_ms)) {
+        std::fprintf(stderr, "one or more servos did not reply to ping\n");
+        port_.close();
+        return false;
+      }
   }
   return true;
 }
@@ -404,6 +406,8 @@ bool SO101Bus::feetech_read_state_basic(int fd, uint8_t id, ServoStateBasic* out
     return true;
 }
 
+
+
 // map 
 static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
   // servo position ranges for counter clockwise rotation
@@ -458,30 +462,31 @@ static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
 }
 
 
-// position only sync write
+// position only SYNCWRITE
+
+// I removed the calss to feetech_read_state_basic since there is no feetech
+// "broadcast read" command that operates in the same way SYNCWRITE broadcasts a write command to all IDs synchronously. This is why I wrote 
+// the read_servo_params program as a for loop that iterates through each ID 
 
 static bool feetech_sync_write_positions(int fd,
                                          const std::array<uint8_t, 6>& ids,
-                                         const std::array<uint16_t, 6>& pos) {
+                                         const std::array<uint16_t, 6>& pos,
+                                         int timeout_ms) {
   constexpr uint8_t kBroadcastId = 0xFE;
   constexpr uint8_t kInstruction = 0x83;  // sync write
-  constexpr uint8_t kGoalPosAddr = 0x2A; // goal Position (2 bytes)
-  constexpr uint8_t kMiniLen = 0x02; // pos(2)
+  constexpr uint8_t kGoalPosAddr = 0x2A;  // goal Position (2 bytes)
+  constexpr uint8_t kMiniLen     = 0x02; // pos(2)
+  constexpr int kSoftMarginUnits = 5;
 
-  constexpr int kReadTimeoutMs   = 80; // for reading current pos
-  constexpr int kSoftMarginUnits = 5;// stay away from hard endpoints
-  constexpr uint16_t kEpsUnits   = 25; // midpoint tolerance
-  constexpr int kSettleTimeoutMs = 600;// wait up to this long for midpoint
-  constexpr int kPollPeriodMs    = 15;// polling interval during settle wait
+  if (timeout_ms < 0) timeout_ms = 0;
 
-  // send a position only SYNCWRITE
   auto send_sync = [&](const std::array<uint16_t, 6>& p) -> bool {
     uint8_t payload[1 + 6 * (1 + 2)]{};
     payload[0] = kMiniLen;
 
     for (int j = 0; j < 6; ++j) {
-      const uint8_t id = ids[j];
-      const uint16_t v = p[j];
+      const uint8_t  id = ids[j];
+      const uint16_t v  = p[j];
       const int base = 1 + j * 3;
       payload[base + 0] = id;
       payload[base + 1] = lo(v);
@@ -490,13 +495,13 @@ static bool feetech_sync_write_positions(int fd,
 
     uint8_t err = 0xFF;
     return SO101Bus::feetech_write_bytes(fd,
-                                        kBroadcastId,
-                                        kGoalPosAddr,
-                                        payload,
-                                        sizeof(payload),
-                                        /*timeout_ms=*/80,
-                                        kInstruction,
-                                        &err);
+                                         kBroadcastId,
+                                         kGoalPosAddr,
+                                         payload,
+                                         sizeof(payload),
+                                         timeout_ms,
+                                         kInstruction,
+                                         &err);
   };
 
   // servo bounds
@@ -509,16 +514,12 @@ static bool feetech_sync_write_positions(int fd,
     uint16_t e0 = static_cast<uint16_t>(std::clamp<int>(r.pos_min, 0, 65535));
     uint16_t e1 = static_cast<uint16_t>(std::clamp<int>(r.pos_max, 0, 65535));
 
+    // if robot_mapping() exists
     const auto m0   = robot_mapping(id, std::vector<uint16_t>{0});
     const auto m180 = robot_mapping(id, std::vector<uint16_t>{18000});
-
     const bool mapping_looks_real =
         (m0.size() == 1 && m180.size() == 1 && !(m0[0] == 0 && m180[0] == 18000));
-
-    if (mapping_looks_real) {
-      e0 = m0[0];
-      e1 = m180[0];
-    }
+    if (mapping_looks_real) { e0 = m0[0]; e1 = m180[0]; }
 
     uint16_t loB = std::min(e0, e1);
     uint16_t hiB = std::max(e0, e1);
@@ -528,7 +529,6 @@ static bool feetech_sync_write_positions(int fd,
       loB = static_cast<uint16_t>(loB + kSoftMarginUnits);
       hiB = static_cast<uint16_t>(hiB - kSoftMarginUnits);
     }
-
     return {loB, hiB};
   };
 
@@ -537,135 +537,42 @@ static bool feetech_sync_write_positions(int fd,
     return static_cast<uint16_t>(std::clamp<int>((int)p, (int)loB, (int)hiB));
   };
 
-  auto midpoint_for_id = [&](int id) -> uint16_t {
-    const auto [loB, hiB] = bounds_for_id(id);
-    return static_cast<uint16_t>((uint32_t(loB) + uint32_t(hiB)) / 2u);
-  };
-
-  // print bounds
-  static bool printed_bounds = false;
-  if (!printed_bounds) {
-    printed_bounds = true;
-    for (int joint = 1; joint <= 6; ++joint) {
-      const auto [loB, hiB] = bounds_for_id(joint);
-      std::fprintf(stderr, "bounds joint %d: [%u, %u]\n", joint, loB, hiB);
-    }
-  }
 
   // clamp the commanded goal
   std::array<uint16_t, 6> goal = pos;
-  for (int j = 0; j < 6; ++j) {
-    const int joint = j + 1;
-    goal[j] = clamp_to_bounds(joint, goal[j]);
-  }
-
-
-  // read current positions for midpoitn check
-  std::array<uint16_t, 6> cur{};
-  bool can_midpoint_guard = true;
-
-  for (int j = 0; j < 6; ++j) {
-    const uint8_t id = ids[j];
-    SO101Bus::ServoStateBasic st{};
-
-    if (!SO101Bus::feetech_read_state_basic(fd, id, &st, kReadTimeoutMs)) {
-      std::fprintf(stderr,
-                   "feetech_sync_write_positions: read_state_basic failed on id=%u (errno=%d: %s, err=0x%02X). "
-                   "skipping midpoint guard and sending direct goal\n",
-                   id, errno, std::strerror(errno), st.error);
-      can_midpoint_guard = false;
-      break;
-    }
-
-    cur[j] = st.present_position;
-  }
-
-  if (!can_midpoint_guard) {
-    return send_sync(goal);
-  }
-
-
-  // decide which servos need the midpoint intermediate command
-  std::array<uint16_t, 6> mid_cmd{};
-  std::array<bool, 6>     needs_mid{};
-  bool any_mid = false;
-
-  for (int j = 0; j < 6; ++j) {
-    const int joint = j + 1;
-
-    const uint16_t mid = midpoint_for_id(joint);
-
-    const uint16_t cur_c  = clamp_to_bounds(joint, cur[j]);
-    const uint16_t goal_c = goal[j];
-
-    const bool cur_half  = (cur_c  > mid);
-    const bool goal_half = (goal_c > mid);
-
-    const bool need = (cur_half != goal_half);
-    needs_mid[j] = need;
-    any_mid |= need;
-
-    mid_cmd[j] = need ? mid : goal_c;
-  }
-
-
-  // if no servo crosses halves send the clamped goals
-  if (!any_mid) {
-    return send_sync(goal);
-  }
-
-  // send the intermediate midpoint command
-  if (!send_sync(mid_cmd)) return false;
-
-  //  wait for crossing servos
-  const auto t0 = std::chrono::steady_clock::now();
-  while (true) {
-    bool all_settled = true;
-
-    for (int j = 0; j < 6; ++j) {
-      if (!needs_mid[j]) continue;
-
-      const uint8_t id = ids[j];
-      const int joint = j + 1;
-      const uint16_t mid = midpoint_for_id(joint);
-
-      SO101Bus::ServoStateBasic st{};
-      if (!SO101Bus::feetech_read_state_basic(fd, id, &st, kReadTimeoutMs)) {
-        std::fprintf(stderr,
-                     "feetech_sync_write_positions: midpoint poll read failed on id=%u (errno=%d: %s, err=0x%02X). "
-                     "Proceeding to final goal write.\n",
-                     id, errno, std::strerror(errno), st.error);
-        all_settled = true;   // stop waiting and issue final goals
-        break;
-      }
-
-      const uint16_t now_p = clamp_to_bounds(joint, st.present_position);
-      const uint16_t diff = (now_p > mid) ? (now_p - mid) : (mid - now_p);
-      if (diff > kEpsUnits) all_settled = false;
-
-    }
-
-    if (all_settled) break;
-
-    const auto elapsed_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
-    if (elapsed_ms >= kSettleTimeoutMs) break;
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(kPollPeriodMs));
-  }
+  for (int j = 0; j < 6; ++j) goal[j] = clamp_to_bounds(j + 1, goal[j]);
 
   // send the final goal command
   return send_sync(goal);
 }
 
-
-static bool feetech_sync_write_positions(int fd, const std::array<uint16_t, 6>& pos) {
-  constexpr std::array<uint8_t, 6> kDefaultIds{{1,2,3,4,5,6}};
-  return feetech_sync_write_positions(fd, kDefaultIds, pos);
+// overloads
+static bool feetech_sync_write_positions(int fd,
+                                         const std::array<uint8_t, 6>& ids,
+                                         const std::array<uint16_t, 6>& pos) {
+  return feetech_sync_write_positions(fd, ids, pos, /*timeout_ms=*/0);
 }
 
-// reads the first uint16_t in each cell as position.
+static bool feetech_sync_write_positions(int fd,
+                                         const std::array<uint16_t, 6>& pos,
+                                         int timeout_ms) {
+  constexpr std::array<uint8_t, 6> kDefaultIds{{1,2,3,4,5,6}};
+  return feetech_sync_write_positions(fd, kDefaultIds, pos, timeout_ms);
+}
+
+static bool feetech_sync_write_positions(int fd,
+                                         const std::array<uint16_t, 6>& pos) {
+  return feetech_sync_write_positions(fd, pos, /*timeout_ms=*/0);
+}
+
+
 bool SO101Bus::feetech_sync_write(int fd, const std::vector<std::vector<std::uint16_t>>& line) {
+  return SO101Bus::feetech_sync_write(fd, line, /*timeout_ms=*/0);
+}
+
+bool SO101Bus::feetech_sync_write(int fd,
+                                  const std::vector<std::vector<std::uint16_t>>& line,
+                                  int timeout_ms) {
   if (line.size() != 6) return false;
 
   std::array<uint16_t, 6> pos{};
@@ -673,7 +580,7 @@ bool SO101Bus::feetech_sync_write(int fd, const std::vector<std::vector<std::uin
     if (line[j].empty()) return false;
     pos[j] = line[j][0];
   }
-  return feetech_sync_write_positions(fd, pos);
+  return feetech_sync_write_positions(fd, pos, timeout_ms);
 }
 
 
@@ -720,19 +627,24 @@ static bool goals_from_traj_element(const TrajElement& e, std::array<uint16_t, 6
   return true;
 }
 
-// poll until either all servos are within tolerance or hit the deadline
-// out_comms_dead is set true if no servos respond for several seconds
+
 static bool wait_until_positions_reached_until(int fd,
                                                const std::array<uint8_t, 6>& ids,
                                                const std::array<uint16_t, 6>& goals,
                                                std::chrono::steady_clock::time_point deadline,
+                                               int pos_tol_ticks,
+                                               int poll_period_ms,
+                                               int read_timeout_ms,
+                                               int stable_polls_req,
+                                               int comms_dead_ms,
                                                bool* out_comms_dead) {
   if (out_comms_dead) *out_comms_dead = false;
 
-  constexpr int kPosTolTicks = 100;
-  constexpr int kPollPeriodMs = 15;
-  constexpr int kReadTimeoutMs = 25;
-  constexpr int kStablePollsReq = 2;
+  pos_tol_ticks    = std::max(0, pos_tol_ticks);
+  poll_period_ms   = std::max(0, poll_period_ms);
+  read_timeout_ms  = std::max(0, read_timeout_ms);
+  stable_polls_req = std::max(1, stable_polls_req);
+  comms_dead_ms    = std::max(0, comms_dead_ms);
 
   std::array<bool, 6> reached{};
   reached.fill(false);
@@ -741,50 +653,44 @@ static bool wait_until_positions_reached_until(int fd,
   int consecutive_all_read_fail = 0;
 
   while (std::chrono::steady_clock::now() < deadline) {
+    const auto next_poll_tp =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(poll_period_ms);
+
     bool all_ok = true;
     bool any_read_ok = false;
 
     for (int j = 0; j < 6; ++j) {
       if (reached[j]) continue;
 
-      const uint8_t id = ids[j];
-      const uint16_t goal = goals[j];
-
       SO101Bus::ServoStateBasic st{};
-      bool ok = false;
-      for (int attempt = 0; attempt < 3 && !ok; ++attempt) {
-        if (SO101Bus::feetech_read_state_basic(fd, id, &st, kReadTimeoutMs)) ok = true;
-        else ::usleep(2000);
-      }
-
-      if (!ok) {
+      if (!SO101Bus::feetech_read_state_basic(fd, ids[j], &st, read_timeout_ms)) {
         all_ok = false;
         continue;
       }
       any_read_ok = true;
 
-      const int diff = std::abs((int)st.present_position - (int)goal);
-      if (diff <= kPosTolTicks) reached[j] = true;
+      const int diff = std::abs((int)st.present_position - (int)goals[j]);
+      if (diff <= pos_tol_ticks) reached[j] = true;
       else all_ok = false;
     }
 
     if (all_ok) {
-      if (++stable >= kStablePollsReq) return true;
+      if (++stable >= stable_polls_req) return true;
     } else {
       stable = 0;
     }
 
-    if (!any_read_ok) {
-      if (++consecutive_all_read_fail >= (3000 / kPollPeriodMs)) {
+    if (!any_read_ok && comms_dead_ms > 0 && poll_period_ms > 0) {
+      if (++consecutive_all_read_fail >= (comms_dead_ms / poll_period_ms)) {
         if (out_comms_dead) *out_comms_dead = true;
         std::fprintf(stderr, "wait_until_positions_reached_until: no servos responding; aborting.\n");
         return false;
       }
-    } else {
+    } else if (any_read_ok) {
       consecutive_all_read_fail = 0;
     }
 
-    ::usleep(kPollPeriodMs * 1000);
+    std::this_thread::sleep_until(std::min(next_poll_tp, deadline));
   }
 
   return false;
@@ -821,6 +727,10 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
   // align t=0 with the first waypoint timestamp
   const double t0 = traj.front().time;
   const auto start = std::chrono::steady_clock::now();
+  double max_sample_time_err_ms = 0.0;
+
+  std::array<uint16_t, 6> last_goals{};
+  //bool have_last_goals = false;
 
   for (size_t i = 0; i < traj.size(); ++i) {
     const TrajElement& e = traj[i];
@@ -831,6 +741,13 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
     const auto send_tp = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                                    std::chrono::duration<double>(rel_s));
     std::this_thread::sleep_until(send_tp);
+    
+    if (cfg_.record_timing_stats) {
+      const auto now = std::chrono::steady_clock::now();
+      const double err_ms =
+          std::chrono::duration<double, std::milli>(now - send_tp).count();
+      if (err_ms > max_sample_time_err_ms) max_sample_time_err_ms = err_ms;
+    }
 
     std::array<uint16_t, 6> goals{};
     if (!goals_from_traj_element(e, &goals)) {
@@ -838,34 +755,42 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
       return false;
     }
 
-    if (!feetech_sync_write_positions(fd, goals)) {
+    if (!feetech_sync_write_positions(fd, goals, cfg_.sync_write_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
       return false;
     }
-
-    // poll during the time until the next waypoint
-    // if goal missed by the next send time continue unless comms dead
-    std::chrono::steady_clock::time_point deadline{};
-    if (i + 1 < traj.size()) {
-      double next_rel_s = traj[i + 1].time - t0;
-      if (next_rel_s < rel_s) next_rel_s = rel_s;
-      deadline = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                          std::chrono::duration<double>(next_rel_s));
-    } else {
-      deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(cfg_.final_settle_ms);
-    }
-
-    if (deadline > std::chrono::steady_clock::now()) {
+    last_goals = goals;
+      
+  }
+  if (cfg_.record_timing_stats) {
+  std::fprintf(stderr, //print sample error, will convert all print statements to std::cout later
+             "max sample time error = %.3f ms\n",
+             max_sample_time_err_ms);
+  }
+  // check after the final waypoint only
+  if (cfg_.final_settle_ms > 0) {
+    if (cfg_.enable_status_poll) {
       bool comms_dead = false;
-      const bool reached = wait_until_positions_reached_until(fd, ids, goals, deadline, &comms_dead);
+      const auto deadline =
+          std::chrono::steady_clock::now() + std::chrono::milliseconds(cfg_.final_settle_ms);
+
+      (void)wait_until_positions_reached_until(fd,
+                                               ids,
+                                               last_goals,
+                                               deadline,
+                                               cfg_.pos_tol_ticks,
+                                               cfg_.status_poll_period_ms,
+                                               cfg_.status_read_timeout_ms,
+                                               cfg_.stable_polls_required,
+                                               cfg_.comms_dead_ms,
+                                               &comms_dead);
       if (comms_dead) return false;
-      if (!reached && (i + 1 < traj.size())) {
-        std::fprintf(stderr,
-                     "execute_traj_full(deque): waypoint %zu not reached before next waypoint; continuing \n",
-                     i);
-      }
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.final_settle_ms));
     }
   }
+
+
 
   return true;
 }
