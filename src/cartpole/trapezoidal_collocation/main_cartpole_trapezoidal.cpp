@@ -6,7 +6,7 @@
 
 // #include "control_effort_trapezoidal_cost.hpp"
 #include "trajectory_variables.hpp"
-// #include "trapezoidal_collocation_constraints.hpp"
+#include "trapezoidal_collocation_constraints.hpp"
 
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
