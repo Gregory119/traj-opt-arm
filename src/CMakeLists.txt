@@ -1,3 +1,10 @@
+cmake_minimum_required(VERSION 3.22)
+project(RobotArmTrajectoryOptimization VERSION 1.0 LANGUAGES CXX)
+
+# c++ standard
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Optional: Set the path to the MuJoCo installation folder if it's not in a standard location.
 # Replace "/opt/mujoco" with your actual MuJoCo installation path.
 # set(MUJOCO_FOLDER "/opt/mujoco/lib/cmake")
@@ -50,3 +57,4 @@ target_link_libraries(
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
