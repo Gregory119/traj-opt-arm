@@ -4,17 +4,19 @@
 
 #include <ifopt/variable_set.h>
 
-// Representation for the discrete state variables over the trajectory.
-class TrajectoryStateVariables final : public ifopt::VariableSet
+// Representation for the discrete variables (eg. states or controls) over the
+// trajectory.
+class TrajectoryVariables final : public ifopt::VariableSet
 {
 public:
     /*
      * @param x_init Initial solution values (guessed solution).
      * @param bounds Bounds of the discrete state variables.
      */
-    TrajectoryStateVariables(Eigen::VectorXd x_init,
-                             ifopt::Component::VecBound bounds)
-        : VariableSet(x_init.size(), "traj_state")
+    TrajectoryVariables(const std::string& name,
+                        Eigen::VectorXd x_init,
+                        ifopt::Component::VecBound bounds)
+        : VariableSet(x_init.size(), name)
         , m_x{std::move(x_init)}
         , m_bounds{std::move(bounds)}
     {
@@ -37,8 +39,8 @@ public:
     }
 
 private:
-    // This holds the discrete state values in a single vector. For n state
-    // vectors each with k elements gives a single combined vector of n*k
+    // This holds the discrete state or control values in a single vector. For n
+    // state vectors each with k elements gives a single combined vector of n*k
     // elements. This is done by concatenating each of the state vectors in
     // order along a single axis. More specifically, for n state vectors x_0,
     // x_1, ..., x_i, ..., x_(n-1), where x_i=[x_i0, x_i1, ..., x_i(k-1)], this
