@@ -20,6 +20,8 @@
 
 namespace {
 
+using ReplyPacket = SO101Bus::ReplyPacket;
+
 // return the 8 bit checksum
 static uint8_t checksum_feetech(const uint8_t* body_no_header, size_t n) {
     
@@ -67,75 +69,7 @@ static ssize_t read_with_timeout(int fd, uint8_t* buf, size_t n, int timeout_ms)
     return ::read(fd, buf, n);  // returns number of bytes read, 0 = closed, -1 = error
 }
 
-// read the packet incoming from descriptor fd at location expected_id
-// wait timeout_ms t receive packet
-// out_error is written to if packet is successfully parsed
-// uint8_t out_params stores the parameter data
-// expected_params len is the number of params in bytes
-static bool read_status_packet_with_params(int fd,
-                                           uint8_t expected_id,
-                                           int timeout_ms,
-                                           uint8_t* out_error,
-                                           std::vector<uint8_t>* out_params,
-                                           size_t expected_params_len) {
-    // format: FF FF ID LEN ERR [params] CHK
-    uint8_t r[256]; //initialize an array of 256 bytes
-    int got = 0; // initialize received bytes at 0
 
-    // read until timeout
-    const int slice_ms = 5; // 5 ms per try
-    int tries = (timeout_ms + slice_ms - 1) / slice_ms; // number of read attempts
-    if (tries < 1) tries = 1; // start number of tries at 1 instead of 0
-
-    for (int t = 0; t < tries && got < (int)sizeof(r); ++t) { // 
-        ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, slice_ms); //return number of bytes read
-        if (k > 0) got += (int)k; // add bytes read for this try to the total number of bytes read
-
-        // parse
-        if (got < 6) continue; //skip this iteration if received bytes is less than 6
-
-        for (int i = 0; i <= got - 6; ++i) { //iterate through the received bytes starting at the first
-            if (r[i] != 0xFF || r[i+1] != 0xFF) continue; //skip this iteration if the first byte 
-                                                          //is not 0xFF(per feetech documentation)
-
-            uint8_t id  = r[i+2]; // id is third byte
-            uint8_t len = r[i+3]; //length is the fourth byte
-            if (id != expected_id) continue; //skip iteration if the id is not the id we are looking to read
-
-            int frame_bytes = 4 + (int)len;  // FF FF ID LEN + (ERR CHK)
-            if (i + frame_bytes > got) continue; //skip iteration if the iterator summed with the number of 
-                                                //bytes is greater than the amount of read bytes
-
-            const uint8_t err = r[i+4]; // error byte is fourth
-            const uint8_t chk = r[i + frame_bytes - 1]; // checksum byte is the last byte
-
-            const int params_len = (int)len - 2; // LEN counts ERR andCHK so params = LEN-2
-            if (params_len < 0) continue; // if params length is invalid, skip this iteration
-
-            //skip iteration if parameter lengths are invalid or expected vs actual dont match
-            if (expected_params_len != (size_t)-1 && (size_t)params_len != expected_params_len) continue; 
-
-            // checksum over ID, LEN, ERR, params
-            std::vector<uint8_t> body; //initialize byte vector to store body data
-            body.reserve((size_t)len + 2); // reserve len +2 bytes of memory
-            body.push_back(id); // add id to the end of body
-            body.push_back(len); // add len to the end of body
-            for (int j = 0; j < (int)len - 1; ++j) { // ERR + params
-                body.push_back(r[i + 4 + j]); //iteratre through read bytes and add it to the body
-            }
-            const uint8_t expect = checksum_feetech(body.data(), body.size()); // compute checksum
-            if (expect != chk) continue; //skip iteration if checksum is not valid
-
-            if (out_error) *out_error = err; //write error byte
-            if (out_params) {
-                out_params->assign(r + i + 5, r + i + 5 + params_len);
-            }
-            return true; //valid packet
-        }
-    }
-
-    return false; // no valid packet found
-}
 
 static inline uint8_t lo(uint16_t v) { return static_cast<uint8_t>(v & 0xFF); } // return lowest 8 bits of 16 bit int
 static inline uint8_t hi(uint16_t v) { return static_cast<uint8_t>((v >> 8) & 0xFF); } //  return highest 8 bits of 16 bit int
@@ -156,7 +90,7 @@ void SO101Bus::set_config(const Config& cfg) { //setter for the particular confi
 bool SO101Bus::connect() {
   // re open using cfg_.device
   port_.close();
-  if (!port_.open(cfg_.device)) {
+    if (!port_.open(cfg_.device)) {
     std::fprintf(stderr, "cant open %s: %s\n", cfg_.device.c_str(), std::strerror(errno));
     return false;
   }
@@ -164,7 +98,7 @@ bool SO101Bus::connect() {
   //if flag is set to true, ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
   // return false if one doesn't reply
   if(cfg_.ping_on_connect){
-      if (!SO101Bus::ping_all(port_.fd(), cfg_.ids, cfg_.ping_timeout_ms)) {
+      if (!SO101Bus::ping_all()) {
         std::fprintf(stderr, "one or more servos did not reply to ping\n");
         port_.close();
         return false;
@@ -195,9 +129,92 @@ bool SO101Bus::ensure_connected_() {
 // set of servo ids, and timeout associated with the port and configuration obejcts
 bool SO101Bus::ping_all() {
   if (!ensure_connected_()) return false;
-  return SO101Bus::ping_all(port_.fd(), cfg_.ids, cfg_.ping_timeout_ms);
+  for (uint8_t id : cfg_.ids) {
+    if (!feetech_ping(id, cfg_.read_timeout_ms)) return false;
+  }
+  return true;
 }
 
+
+// read the packet incoming from descriptor fd at location expected_id
+// wait timeout_ms t receive packet
+// out_error is written to if packet is successfully parsed
+// uint8_t out_params stores the parameter data
+// expected_params len is the number of params in bytes
+bool SO101Bus::read_reply(
+                uint8_t expected_id,
+                int timeout_ms,
+                ReplyPacket& reply){
+    const int fd = port_.fd();
+    // format: FF FF ID LEN ERR [params] CHK
+    uint8_t r[256]; //initialize an array of 256 bytes
+    int got = 0; // initialize received bytes at 0
+    int start =0;
+
+    reply = ReplyPacket{};
+
+    // read until timeout
+    const int slice_ms = std::max(1, std::min(timeout_ms, 5)); // prevents 0 by clamping between 1 and 5
+    int tries = (timeout_ms + slice_ms - 1) / slice_ms; // number of read attempts
+    if (tries < 1) tries = 1; // start number of tries at 1 instead of 0
+
+    for (int t = 0; t < tries && got < (int)sizeof(r); ++t) { // 
+        ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, slice_ms); //return number of bytes read
+        if (k > 0) got += (int)k; // add bytes read for this try to the total number of bytes read
+
+        // parse
+        while (true) {
+            // 0xFF 0xFF
+            while (start + 1 < got && !(r[start] == 0xFF && r[start + 1] == 0xFF)) {
+                ++start;
+            }
+
+            // wait until FF FF ID LEN ERR received 
+            if (got - start < 5) break;
+
+            const uint8_t id  = r[start + 2];
+            const uint8_t len = r[start + 3];
+
+            // if not target id shift by 1 
+            if (id != expected_id) { ++start; continue; }
+
+            const int frame_bytes = 4 + (int)len;
+
+            // wait until the full frame
+            if (got - start < frame_bytes) break;
+
+            const uint8_t err = r[start + 4];
+            const uint8_t chk = r[start + frame_bytes - 1];
+
+            const int params_len = (int)len - 2;
+            if (params_len < 0) { ++start; continue; }
+
+            // checksum
+            const uint8_t expect = checksum_feetech(&r[start + 2], (size_t)len + 1);
+            if (expect != chk) { ++start; continue; }
+
+            // reply
+            reply.initial      = 0xFFFF;
+            reply.id           = id;
+            reply.data_length  = len;
+            reply.error_status = err;
+            reply.check_sum    = chk;
+            reply.parameters.assign(&r[start + 5], &r[start + 5 + params_len]);
+
+            // return false if servo reports error
+            return (reply.error_status == 0x00);
+        }
+
+        if (start > 0) {
+            const int remaining = got - start;
+            if (remaining > 0) std::memmove(r, r + start, (size_t)remaining);
+            got = remaining;
+            start = 0;
+        }
+    }
+
+    return false; // no valid packet found
+}
 
 // SO101Bus::Port, bind the lifetime of the FD to the lifetime of the port object
 
@@ -273,7 +290,9 @@ int SO101Bus::open_port_1Mbps(const char* path) {
     return fd; //return file descriptor after configuring the port
 }
 
-bool SO101Bus::feetech_ping(int fd, uint8_t id, int timeout_ms) {
+bool SO101Bus::feetech_ping(uint8_t id, int timeout_ms) {
+    if (!ensure_connected_()) return false;
+    const int fd = port_.fd();
     // format FF FF ID 02 01 CHK
     uint8_t body[3] = {id, 0x02, 0x01}; // body is 3 bytes
     uint8_t chk     = checksum_feetech(body, sizeof(body)); //compute checksum
@@ -282,23 +301,25 @@ bool SO101Bus::feetech_ping(int fd, uint8_t id, int timeout_ms) {
     tcflush(fd, TCIFLUSH); // clear old data
     if (!write_all(fd, pkt, sizeof(pkt))) return false; // return false if write fails
 
-    uint8_t err = 0xFF; // initialize error byte
-    return read_status_packet_with_params(fd, id, timeout_ms, &err,nullptr,(size_t)-1); //return true if valid packet is received, 
+    ReplyPacket reply;
+    return read_reply(id, timeout_ms,reply); //return true if valid packet is received, 
                                                                                         //false if not
 }
 
-bool SO101Bus::feetech_write_byte(int fd, uint8_t id, uint8_t address, uint8_t value, int timeout_ms) {
-  return SO101Bus::feetech_write_bytes(fd, id, address, &value, 1, timeout_ms, 0x03, nullptr);  //useful for writing a single param byte(like position)
+bool SO101Bus::feetech_write_byte(uint8_t id, uint8_t address, uint8_t value, int timeout_ms) {
+    const int fd = port_.fd();
+  return feetech_write_bytes(id, address, &value, 1, timeout_ms, 0x03, nullptr);  //useful for writing a single param byte(like position)
 }
 
-bool SO101Bus::feetech_write_bytes(int fd,
-                                   uint8_t id,
+bool SO101Bus::feetech_write_bytes(uint8_t id,
                                    uint8_t start_address,
                                    const uint8_t* data,
                                    size_t data_len,
                                    int timeout_ms,
                                    uint8_t instruc_code,
                                    uint8_t* out_error) {
+    if (!ensure_connected_()) return false;
+    const int fd = port_.fd();
     // FF FF ID LENGTH INSTR(0x03) ADDR DATA... CHK
     // length = (params) + 2, params = 1(addr) + data_len
     if (!data && data_len != 0) { errno = EINVAL; return false; } //if no data but non zero length, set error code and return false
@@ -327,23 +348,23 @@ bool SO101Bus::feetech_write_bytes(int fd,
     // if broadcast ID 0xFE does not reply
     if (id == 0xFE) return true;
 
-    uint8_t err = 0xFF; //errpr byte
-  if (!read_status_packet_with_params(fd, id, timeout_ms, &err, nullptr, (size_t)-1)) {
-    errno = ETIMEDOUT;
-    return false; // return false if no packet received before timeout
-                  // or invalid checksum, parse fail
-  }
-  if (out_error) *out_error = err; //write error byte
-  return (err == 0x00); // returns false if there is an error
+    ReplyPacket reply;
+    const bool ok = read_reply(id, timeout_ms, reply);
+    if (out_error) *out_error = reply.error_status;
+    if (!ok) {
+      if (reply.initial == 0) errno = ETIMEDOUT; // only if we never parsed a packet
+      return false;
+    }
+    return true;
 }
 
-bool SO101Bus::feetech_read_bytes(int fd,
-                                  uint8_t id,
+bool SO101Bus::feetech_read_bytes(uint8_t id,
                                   uint8_t start_address,
                                   uint8_t* out,
                                   size_t out_len,
                                   int timeout_ms,
                                   uint8_t* out_error) {
+    const int fd = port_.fd();
     if (!out && out_len != 0) { errno = EINVAL; return false; } // if no data with nonzero data length, write error code and return false
     if (out_len > 250) { errno = EINVAL; return false; } // check max length
 
@@ -361,21 +382,20 @@ bool SO101Bus::feetech_read_bytes(int fd,
     tcflush(fd, TCIFLUSH); // flush current response bytes before performing write
     if (!write_all(fd, pkt, sizeof(pkt))) return false; // write packet data and return false if write fail occurs
 
-    std::vector<uint8_t> params; // initialize byte vector for parameters
-    uint8_t err = 0xFF; // initialize error byte
-  if (!read_status_packet_with_params(fd, id, timeout_ms, &err, &params, out_len)) { // read the status packet
-    errno = ETIMEDOUT;
-    return false;
-  }
-  if (out_error) *out_error = err; // rewrite error byte
-  if (err != 0x00) return false; // return false if there is an error
-  if (params.size() != out_len) return false; // parameter bytes mismatch with expected length, return false
-
-  if (out_len) std::memcpy(out, params.data(), out_len); // copy the parameter data to out address
-  return true; // valid packet read
+    ReplyPacket reply;
+    const bool ok = read_reply(id, timeout_ms, reply);
+    if (out_error) *out_error = reply.error_status;
+    if (!ok) {
+      if (reply.initial == 0) errno = ETIMEDOUT;
+      return false;
+    }
+    if (reply.parameters.size() != out_len) return false;
+    if (out_len) std::memcpy(out, reply.parameters.data(), out_len);
+    return true;
 }
 
-bool SO101Bus::feetech_read_state_basic(int fd, uint8_t id, ServoStateBasic* out, int timeout_ms) {
+bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int timeout_ms) {
+    const int fd = port_.fd();
     if (!out) { errno = EINVAL; return false; } //error code if out address is not valid
 
     // position documented at 0x38 2 bytes
@@ -383,7 +403,7 @@ bool SO101Bus::feetech_read_state_basic(int fd, uint8_t id, ServoStateBasic* out
     const size_t  N     = 8;
 
     uint8_t err = 0xFF; // initialize error byte
-    if (!feetech_read_bytes(fd, id, START, out->raw, N, timeout_ms, &err)) {
+    if (!feetech_read_bytes(id, START, out->raw, N, timeout_ms, &err)) {
         out->error = err; // write error code to ServoStateBasic object
         return false; // return false when a read fail occurs
     }
@@ -406,13 +426,24 @@ bool SO101Bus::feetech_read_state_basic(int fd, uint8_t id, ServoStateBasic* out
     return true;
 }
 
+bool SO101Bus::read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_ms) {
+  if (!out) { errno = EINVAL; return false; }
+
+  for (int j = 0; j < 6; ++j) {
+    if (!feetech_read_state_basic(cfg_.ids[j], &(*out)[j], timeout_ms)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 
 
 // map 
 static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
   // servo position ranges for counter clockwise rotation
   // index 0 unused
-  constexpr auto& kRanges = SO101Bus::kPosRangeById;
+  constexpr auto& kRanges = SO101Bus::tick_Pos_Range_By_Id;
 
   // degree limits
   constexpr double kDegMin = 0.0;
@@ -462,23 +493,23 @@ static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
 }
 
 
-// position only SYNCWRITE
+//This function uses  the 'SYNC WRITE' functionality in the message protocol, which sends a single packet containing the write data for all servos instead of one packet per servo.
 
-// I removed the calss to feetech_read_state_basic since there is no feetech
-// "broadcast read" command that operates in the same way SYNCWRITE broadcasts a write command to all IDs synchronously. This is why I wrote 
-// the read_servo_params program as a for loop that iterates through each ID 
-
-static bool feetech_sync_write_positions(int fd,
-                                         const std::array<uint8_t, 6>& ids,
-                                         const std::array<uint16_t, 6>& pos,
-                                         int timeout_ms) {
+bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms) {
+  if (!ensure_connected_()) return false;
+  const int fd = port_.fd();
+  const auto& ids = cfg_.ids;
   constexpr uint8_t kBroadcastId = 0xFE;
   constexpr uint8_t kInstruction = 0x83;  // sync write
   constexpr uint8_t kGoalPosAddr = 0x2A;  // goal Position (2 bytes)
   constexpr uint8_t kMiniLen     = 0x02; // pos(2)
   constexpr int kSoftMarginUnits = 5;
 
-  if (timeout_ms < 0) timeout_ms = 0;
+  if (timeout_ms < 0) {
+    std::fprintf(stderr, "timeout_ms set to invalid value of: %d\n ",timeout_ms);
+    return false;
+
+  };
 
   auto send_sync = [&](const std::array<uint16_t, 6>& p) -> bool {
     uint8_t payload[1 + 6 * (1 + 2)]{};
@@ -494,8 +525,7 @@ static bool feetech_sync_write_positions(int fd,
     }
 
     uint8_t err = 0xFF;
-    return SO101Bus::feetech_write_bytes(fd,
-                                         kBroadcastId,
+    return this->feetech_write_bytes(kBroadcastId,
                                          kGoalPosAddr,
                                          payload,
                                          sizeof(payload),
@@ -510,7 +540,7 @@ static bool feetech_sync_write_positions(int fd,
     // fallback mapping
     if (id < 1 || id > 6) return {0, 0};
 
-    const auto& r = SO101Bus::kPosRangeById[(size_t)id];
+    const auto& r = SO101Bus::tick_Pos_Range_By_Id[(size_t)id];
     uint16_t e0 = static_cast<uint16_t>(std::clamp<int>(r.pos_min, 0, 65535));
     uint16_t e1 = static_cast<uint16_t>(std::clamp<int>(r.pos_max, 0, 65535));
 
@@ -544,43 +574,6 @@ static bool feetech_sync_write_positions(int fd,
 
   // send the final goal command
   return send_sync(goal);
-}
-
-// overloads
-static bool feetech_sync_write_positions(int fd,
-                                         const std::array<uint8_t, 6>& ids,
-                                         const std::array<uint16_t, 6>& pos) {
-  return feetech_sync_write_positions(fd, ids, pos, /*timeout_ms=*/0);
-}
-
-static bool feetech_sync_write_positions(int fd,
-                                         const std::array<uint16_t, 6>& pos,
-                                         int timeout_ms) {
-  constexpr std::array<uint8_t, 6> kDefaultIds{{1,2,3,4,5,6}};
-  return feetech_sync_write_positions(fd, kDefaultIds, pos, timeout_ms);
-}
-
-static bool feetech_sync_write_positions(int fd,
-                                         const std::array<uint16_t, 6>& pos) {
-  return feetech_sync_write_positions(fd, pos, /*timeout_ms=*/0);
-}
-
-
-bool SO101Bus::feetech_sync_write(int fd, const std::vector<std::vector<std::uint16_t>>& line) {
-  return SO101Bus::feetech_sync_write(fd, line, /*timeout_ms=*/0);
-}
-
-bool SO101Bus::feetech_sync_write(int fd,
-                                  const std::vector<std::vector<std::uint16_t>>& line,
-                                  int timeout_ms) {
-  if (line.size() != 6) return false;
-
-  std::array<uint16_t, 6> pos{};
-  for (int j = 0; j < 6; ++j) {
-    if (line[j].empty()) return false;
-    pos[j] = line[j][0];
-  }
-  return feetech_sync_write_positions(fd, pos, timeout_ms);
 }
 
 
@@ -622,87 +615,11 @@ static bool goals_from_traj_element(const TrajElement& e, std::array<uint16_t, 6
   if (e.val.size() < 6) return false;
 
   for (int j = 0; j < 6; ++j) {
-    (*out_goals)[j] = traj_value_to_ticks(e.val[(size_t)j], /*joint_index_1to6=*/(j + 1));
+    (*out_goals)[j] = traj_value_to_ticks(e.val[(size_t)j],(j + 1));
   }
   return true;
 }
 
-
-static bool wait_until_positions_reached_until(int fd,
-                                               const std::array<uint8_t, 6>& ids,
-                                               const std::array<uint16_t, 6>& goals,
-                                               std::chrono::steady_clock::time_point deadline,
-                                               int pos_tol_ticks,
-                                               int poll_period_ms,
-                                               int read_timeout_ms,
-                                               int stable_polls_req,
-                                               int comms_dead_ms,
-                                               bool* out_comms_dead) {
-  if (out_comms_dead) *out_comms_dead = false;
-
-  pos_tol_ticks    = std::max(0, pos_tol_ticks);
-  poll_period_ms   = std::max(0, poll_period_ms);
-  read_timeout_ms  = std::max(0, read_timeout_ms);
-  stable_polls_req = std::max(1, stable_polls_req);
-  comms_dead_ms    = std::max(0, comms_dead_ms);
-
-  std::array<bool, 6> reached{};
-  reached.fill(false);
-
-  int stable = 0;
-  int consecutive_all_read_fail = 0;
-
-  while (std::chrono::steady_clock::now() < deadline) {
-    const auto next_poll_tp =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(poll_period_ms);
-
-    bool all_ok = true;
-    bool any_read_ok = false;
-
-    for (int j = 0; j < 6; ++j) {
-      if (reached[j]) continue;
-
-      SO101Bus::ServoStateBasic st{};
-      if (!SO101Bus::feetech_read_state_basic(fd, ids[j], &st, read_timeout_ms)) {
-        all_ok = false;
-        continue;
-      }
-      any_read_ok = true;
-
-      const int diff = std::abs((int)st.present_position - (int)goals[j]);
-      if (diff <= pos_tol_ticks) reached[j] = true;
-      else all_ok = false;
-    }
-
-    if (all_ok) {
-      if (++stable >= stable_polls_req) return true;
-    } else {
-      stable = 0;
-    }
-
-    if (!any_read_ok && comms_dead_ms > 0 && poll_period_ms > 0) {
-      if (++consecutive_all_read_fail >= (comms_dead_ms / poll_period_ms)) {
-        if (out_comms_dead) *out_comms_dead = true;
-        std::fprintf(stderr, "wait_until_positions_reached_until: no servos responding; aborting.\n");
-        return false;
-      }
-    } else if (any_read_ok) {
-      consecutive_all_read_fail = 0;
-    }
-
-    std::this_thread::sleep_until(std::min(next_poll_tp, deadline));
-  }
-
-  return false;
-}
-
-
-bool SO101Bus::ping_all(int fd, const std::array<uint8_t, 6>& ids, int timeout_ms) {
-  for (uint8_t id : ids) {
-    if (!SO101Bus::feetech_ping(fd, id, timeout_ms)) return false;
-  }
-  return true;
-}
 
 // trajectory execution
 
@@ -755,11 +672,21 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
       return false;
     }
 
-    if (!feetech_sync_write_positions(fd, goals, cfg_.sync_write_timeout_ms)) {
+    if (!write_all_positions(goals, cfg_.read_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
       return false;
     }
     last_goals = goals;
+
+    if (cfg_.enable_status_poll) {
+      std::array<ServoStateBasic, 6> st{};
+      if (!read_all_states(&st, cfg_.status_read_timeout_ms)) {
+        std::fprintf(stderr,
+                     "execute_traj_full(deque): read_all_states failed after waypoint %zu\n",
+                     i);
+        return false;
+      }
+    }
       
   }
   if (cfg_.record_timing_stats) {
@@ -767,27 +694,9 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
              "max sample time error = %.3f ms\n",
              max_sample_time_err_ms);
   }
-  // check after the final waypoint only
-  if (cfg_.final_settle_ms > 0) {
-    if (cfg_.enable_status_poll) {
-      bool comms_dead = false;
-      const auto deadline =
-          std::chrono::steady_clock::now() + std::chrono::milliseconds(cfg_.final_settle_ms);
 
-      (void)wait_until_positions_reached_until(fd,
-                                               ids,
-                                               last_goals,
-                                               deadline,
-                                               cfg_.pos_tol_ticks,
-                                               cfg_.status_poll_period_ms,
-                                               cfg_.status_read_timeout_ms,
-                                               cfg_.stable_polls_required,
-                                               cfg_.comms_dead_ms,
-                                               &comms_dead);
-      if (comms_dead) return false;
-    } else {
-      std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.final_settle_ms));
-    }
+  if (cfg_.final_settle_ms > 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.final_settle_ms));
   }
 
 
