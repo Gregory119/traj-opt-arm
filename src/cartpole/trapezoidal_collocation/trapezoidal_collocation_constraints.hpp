@@ -35,7 +35,7 @@ public:
      *   time.
      * @param control_len The number of elements in a control vector at a
      *   particular time.
-     * @param segment_dt The fixed duration of every time segement.
+     * @param dt_segment The fixed duration of every time segement.
      * @param dyn_fn Callback function to get the value of the dynamics
      *   function.
      * @param jac_dyn_fn_wrt_state Callback function to get the value of the
@@ -49,7 +49,7 @@ public:
         const int state_len,
         const std::string &control_var_set_name,
         const int control_len,
-        const double segment_dt,
+        const double dt_segment,
         const DynFn &dyn_fn,
         const JacobianDynFn &jac_dyn_fn_wrt_state,
         const JacobianDynFn &jac_dyn_fn_wrt_control);
@@ -115,7 +115,7 @@ private:
     const int m_state_len;
     const std::string m_control_var_set_name;
     const int m_control_len;
-    const double m_segment_dt;
+    const double m_dt_segment;
     const DynFn m_dyn_fn;
     const JacobianDynFn m_jac_dyn_fn_wrt_state;
     const JacobianDynFn m_jac_dyn_fn_wrt_control;

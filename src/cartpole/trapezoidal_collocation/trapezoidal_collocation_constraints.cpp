@@ -28,7 +28,7 @@ TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     const int state_len,
     const std::string &control_var_set_name,
     const int control_len,
-    const double segment_dt,
+    const double dt_segment,
     const DynFn &dyn_fn,
     const JacobianDynFn &jac_dyn_fn_wrt_state,
     const JacobianDynFn &jac_dyn_fn_wrt_control)
@@ -37,7 +37,7 @@ TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     , m_state_len{state_len}
     , m_control_var_set_name{control_var_set_name}
     , m_control_len{control_len}
-    , m_segment_dt{segment_dt}
+    , m_dt_segment{dt_segment}
     , m_dyn_fn{dyn_fn}
     , m_jac_dyn_fn_wrt_state{jac_dyn_fn_wrt_state}
     , m_jac_dyn_fn_wrt_control{jac_dyn_fn_wrt_control}
@@ -75,7 +75,7 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
         auto control_view_k
             = control_vars(Eigen::seqN(k * m_control_len, m_control_len));
         // time relative to start time of zero
-        const double tk = k * m_segment_dt;
+        const double tk = k * m_dt_segment;
         const Eigen::VectorXd fk = m_dyn_fn(state_view_k, control_view_k, tk);
         assert(fk.size() == m_state_len);
 
@@ -87,7 +87,7 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
         auto control_view_k1
             = control_vars(Eigen::seqN((k + 1) * m_control_len, m_control_len));
         // time relative to start time of zero
-        const double tk1 = (k + 1) * m_segment_dt;
+        const double tk1 = (k + 1) * m_dt_segment;
         const Eigen::VectorXd fk1
             = m_dyn_fn(state_view_k1, control_view_k1, tk1);
         assert(fk1.size() == m_state_len);
@@ -95,7 +95,7 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
         // calculate vector of defect k (for vector based defects) and set
         // them in final combined constraints vector
         const Eigen::VectorXd defectk
-            = state_view_k1 - state_view_k - m_segment_dt / 2.0 * (fk + fk1);
+            = state_view_k1 - state_view_k - m_dt_segment / 2.0 * (fk + fk1);
         defect_constraints(Eigen::seqN(k * m_state_len, m_state_len)) = defectk;
     }
 
@@ -160,7 +160,7 @@ void TrapezoidalCollocationConstraints::FillJacobianWrt(
             auto statej = state_vars(Eigen::seqN(j * m_state_len, m_state_len));
             auto controlj
                 = control_vars(Eigen::seqN(j * m_control_len, m_control_len));
-            const double tj = m_segment_dt * j;
+            const double tj = m_dt_segment * j;
             // defects increment for each row
             const int row_start = k * m_state_len;
             // control/state vectors increment for each column
@@ -231,7 +231,7 @@ ifopt::Component::Jacobian
         = ifopt::Component::Jacobian::Identity(m_state_len, m_state_len);
 
     // jacobian of defect k w.r.t state j.
-    const auto hk = m_segment_dt;
+    const auto hk = m_dt_segment;
     auto dck_dxj = -hk / 2 * dfk_dxj;
     if (k == j) {
         dck_dxj -= dxk_dxj;
@@ -262,6 +262,6 @@ ifopt::Component::Jacobian
     ifopt::Component::Jacobian dfk_duj
         = m_jac_dyn_fn_wrt_control(statej, controlj, tj);
 
-    const auto hk = m_segment_dt;
+    const auto hk = m_dt_segment;
     return -hk / 2 * dfk_duj;
 }
