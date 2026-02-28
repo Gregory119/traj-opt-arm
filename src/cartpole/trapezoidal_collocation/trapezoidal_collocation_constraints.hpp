@@ -39,7 +39,9 @@ public:
      * @param dyn_fn Callback function to get the value of the dynamics
      *   function.
      * @param jac_dyn_fn_wrt_state Callback function to get the value of the
-     * jacobian of the dynamics function w.r.t the input state.
+     *   jacobian of the dynamics function w.r.t the input state.
+     * @param jac_dyn_fn_wrt_control Callback function to get the value of the
+     *   jacobian of the dynamics function w.r.t the input state.
      */
     TrapezoidalCollocationConstraints(
         const int num_constraints,
@@ -49,7 +51,8 @@ public:
         const int control_len,
         const double segment_dt,
         const DynFn &dyn_fn,
-        const JacobianDynFn &jac_dyn_fn_wrt_state);
+        const JacobianDynFn &jac_dyn_fn_wrt_state,
+        const JacobianDynFn &jac_dyn_fn_wrt_control);
     // Get the current values of all constraints
     Eigen::VectorXd GetValues() const override;
 
@@ -60,18 +63,53 @@ public:
         return bounds;
     }
 
-    void FillJacobianBlock(std::string var_set,
-                           ifopt::Component::Jacobian &jac_block) const override
-    {
-        if (var_set == m_state_var_set_name) {
-            FillJacobianWrtState(jac_block);
-        } else if (var_set == m_control_var_set_name) {
-        }
-    }
+    // Create the jacobian of the contraints w.r.t all of the optimization
+    // variables (state, control).
+    void FillJacobianBlock(
+        std::string var_set,
+        ifopt::Component::Jacobian &jac_block) const override;
 
 private:
-    // Create the jacobian of the constraints w.r.t the state variables.
-    void FillJacobianWrtState(ifopt::Component::Jacobian &jac_block) const;
+    enum class VariableType
+    {
+        STATE,
+        CONTROL
+    };
+
+    // Create the jacobian of the constraints w.r.t the specified variable
+    // types.
+    void FillJacobianWrt(const VariableType var_type,
+                         ifopt::Component::Jacobian &jac_block) const;
+
+    int getVarTypeLen(const VariableType var_type) const;
+
+    // Create the jacobian of defect constraint vector k w.r.t the vector
+    // variable type (eg. state or control) at time point j.
+    ifopt::Component::Jacobian jacConstraintsWrtVar(
+        const VariableType var_type,
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const;
+
+    // Create the jacobian of defect constraint vector k w.r.t the state vector
+    // at time point j.
+    ifopt::Component::Jacobian jacConstraintsWrtState(
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const;
+
+    // Create the jacobian of defect constraint vector k w.r.t the control
+    // vector at time point j.
+    ifopt::Component::Jacobian jacConstraintsWrtControl(
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const;
 
     const std::string m_state_var_set_name;
     const int m_state_len;
@@ -80,6 +118,7 @@ private:
     const double m_segment_dt;
     const DynFn m_dyn_fn;
     const JacobianDynFn m_jac_dyn_fn_wrt_state;
+    const JacobianDynFn m_jac_dyn_fn_wrt_control;
     int m_num_segments;
     Eigen::Vector4d m_x;
 };

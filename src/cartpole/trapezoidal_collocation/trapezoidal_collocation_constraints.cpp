@@ -30,7 +30,8 @@ TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     const int control_len,
     const double segment_dt,
     const DynFn &dyn_fn,
-    const JacobianDynFn &jac_dyn_fn_wrt_state)
+    const JacobianDynFn &jac_dyn_fn_wrt_state,
+    const JacobianDynFn &jac_dyn_fn_wrt_control)
     : ConstraintSet(num_constraints, "trap_col_constraints")
     , m_state_var_set_name{state_var_set_name}
     , m_state_len{state_len}
@@ -39,6 +40,7 @@ TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     , m_segment_dt{segment_dt}
     , m_dyn_fn{dyn_fn}
     , m_jac_dyn_fn_wrt_state{jac_dyn_fn_wrt_state}
+    , m_jac_dyn_fn_wrt_control{jac_dyn_fn_wrt_control}
 {
     const Eigen::VectorXd state_vars
         = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
@@ -100,27 +102,58 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
     return defect_constraints;
 }
 
-void TrapezoidalCollocationConstraints::FillJacobianWrtState(
+void TrapezoidalCollocationConstraints::FillJacobianBlock(
+    std::string var_set,
+    ifopt::Component::Jacobian &jac_block) const
+{
+    if (var_set == m_state_var_set_name) {
+        FillJacobianWrt(VariableType::STATE, jac_block);
+    } else if (var_set == m_control_var_set_name) {
+        FillJacobianWrt(VariableType::CONTROL, jac_block);
+    }
+}
+
+int TrapezoidalCollocationConstraints::getVarTypeLen(
+    const VariableType var_type) const
+{
+    switch (var_type) {
+        case VariableType::STATE:
+            return m_state_len;
+
+        case VariableType::CONTROL:
+            return m_control_len;
+    }
+    assert(false);
+    return m_state_len;
+}
+
+void TrapezoidalCollocationConstraints::FillJacobianWrt(
+    const VariableType var_type,
     ifopt::Component::Jacobian &jac_block) const
 {
     const Eigen::VectorXd state_vars
-        = GetVariables()->GetComponent(var_set)->GetValues();
+        = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
     const Eigen::VectorXd control_vars
         = GetVariables()->GetComponent(m_control_var_set_name)->GetValues();
 
     // use list of triplets to simplify and avoid costly random
     // insertions when constructing the final sparse jacobian matrix
     std::vector<Eigen::Triplet<double>> triplet_list;
-    triplet_list.reserve(m_state_len * m_state_len * 2 * m_num_segments);
+    const int var_type_len = getVarTypeLen(var_type);
+    const int num_nonzero_submatrices = 2;
+    const int num_defect_vec_eqns = m_num_segments;
+    triplet_list.reserve(m_state_len * var_type_len * num_nonzero_submatrices
+                         * num_defect_vec_eqns);
 
-    // Here k represents the kth defect constraint equation. Set the
-    // stop point such that the state at time point j=k+1 can be
-    // accessed for the last iteration.
+    // Here k represents the kth vector defect constraint equation. Set the stop
+    // point such that the state at time point j=k+1 can be accessed for the
+    // last iteration.
     const int k_max = m_num_segments;
 
-    // The jacobian of defect k w.r.t state vector j is nonzero for
-    // j=k and j=k+1. This submatrix starts at (k*state_len,
-    // j*state_len) and has size=state_len x state_len.
+    // The jacobian of defect k w.r.t control vector j is nonzero for j=k and
+    // j=k+1 (gives two non-zero submatrices in the output jacobian). This
+    // submatrix starts at (k*state_len, j*control_len) and has
+    // size=(control_len x state_len).
     for (size_t k{}; k < k_max; ++k) {
         for (size_t j = k; j < k + 2; ++j) {
             // get state, control, and time at time index j
@@ -130,37 +163,19 @@ void TrapezoidalCollocationConstraints::FillJacobianWrtState(
             const double tj = m_segment_dt * j;
             // defects increment for each row
             const int row_start = k * m_state_len;
-            // state vectors increment for each column
-            const int col_start = j * m_state_len;
+            // control/state vectors increment for each column
+            const int col_start = j * var_type_len;
 
-            // In general the jacobian of defect k w.r.t state j is:
-            // dck_dxj = dxk1_dxj - dxk_dxj - hk/2*(dfk1_dxj + dfk_dxj)
+            // get triplets for jacobian of defect k w.r.t state or control
+            // vector at time point j
+            ifopt::Component::Jacobian jac_constraints_wrt_var
+                = jacConstraintsWrtVar(var_type, k, j, statej, controlj, tj);
 
-            // j=k => dxk1_dxj=0 and dfk1_dxj=0
-            // j=k+1 => dxk_dxj=0 and dfk_dxj=0
-
-            // jacobians of dynamics. This represents either dfk_dxj
-            // (for j=k) or dfk1_dxj (for j=k+1) to reduce duplicate
-            // code.
-            ifopt::Component::Jacobian dfk_dxj
-                = m_jac_dyn_fn_wrt_state(statej, controlj, tj);
-            // jacobian of discrete state. This represents either
-            // dxk_dxj (for j=k) or dxk1_dxj (for j=k+1) to reduce
-            // duplicate code.
-            auto dxk_dxj = ifopt::Component::Jacobian::Identity(m_state_len,
-                                                                m_state_len);
-
-            // jacobian of defect k w.r.t state j.
-            auto dck_dxj = -hk / 2 * dfk_dxj;
-            if (k == j) {
-                dck_dxj -= dxk_dxj;
-            } else {
-                dck_dxj += dxk_dxj;
-            }
             // extract triplets for final jacobian construction and
             // making sure to offset the indices
-            auto sub_triplets
-                = sparseMatrixToTriplets(dck_dxj, row_start, col_start);
+            auto sub_triplets = sparseMatrixToTriplets(jac_constraints_wrt_var,
+                                                       row_start,
+                                                       col_start);
             triplet_list.insert(triplet_list.cend(),
                                 sub_triplets.cbegin(),
                                 sub_triplets.cend());
@@ -168,4 +183,85 @@ void TrapezoidalCollocationConstraints::FillJacobianWrtState(
     }
 
     jac_block.setFromTriplets(triplet_list.cbegin(), triplet_list.cend());
+}
+
+ifopt::Component::Jacobian
+    TrapezoidalCollocationConstraints::jacConstraintsWrtVar(
+        const VariableType var_type,
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const
+{
+    switch (var_type) {
+        case VariableType::STATE:
+            return jacConstraintsWrtState(k, j, state, control, time);
+
+        case VariableType::CONTROL:
+            return jacConstraintsWrtControl(k, j, state, control, time);
+    }
+    assert(false);
+    return jacConstraintsWrtState(k, j, state, control, time);
+}
+
+ifopt::Component::Jacobian
+    TrapezoidalCollocationConstraints::jacConstraintsWrtState(
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const
+{
+    // In general the jacobian of defect k w.r.t state j is:
+    // dck_dxj = dxk1_dxj - dxk_dxj - hk/2*(dfk1_dxj + dfk_dxj)
+
+    // j=k => dxk1_dxj=0 and dfk1_dxj=0
+    // j=k+1 => dxk_dxj=0 and dfk_dxj=0
+
+    // jacobians of dynamics. This represents either dfk_dxj
+    // (for j=k) or dfk1_dxj (for j=k+1) to reduce duplicate
+    // code.
+    ifopt::Component::Jacobian dfk_dxj
+        = m_jac_dyn_fn_wrt_state(statej, controlj, tj);
+    // jacobian of discrete state. This represents either
+    // dxk_dxj (for j=k) or dxk1_dxj (for j=k+1) to reduce
+    // duplicate code.
+    auto dxk_dxj
+        = ifopt::Component::Jacobian::Identity(m_state_len, m_state_len);
+
+    // jacobian of defect k w.r.t state j.
+    const auto hk = m_segment_dt;
+    auto dck_dxj = -hk / 2 * dfk_dxj;
+    if (k == j) {
+        dck_dxj -= dxk_dxj;
+    } else {
+        dck_dxj += dxk_dxj;
+    }
+
+    return dfk_dxj;
+}
+
+ifopt::Component::Jacobian
+    TrapezoidalCollocationConstraints::jacConstraintsWrtControl(
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const
+{
+    // In general the jacobian of defect k w.r.t control j is:
+    // dck_duj = - hk/2*(dfk1_duj + dfk_duj)
+
+    // j=k => dfk1_duj=0
+    // j=k+1 => dfk_duj=0
+
+    // jacobians of dynamics. This represents either dfk_duj
+    // (for j=k) or dfk1_duj (for j=k+1) to reduce duplicate
+    // code.
+    ifopt::Component::Jacobian dfk_duj
+        = m_jac_dyn_fn_wrt_control(statej, controlj, tj);
+
+    const auto hk = m_segment_dt;
+    return -hk / 2 * dfk_duj;
 }
