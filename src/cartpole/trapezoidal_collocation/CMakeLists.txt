@@ -1,3 +1,7 @@
 add_executable(main_cartpole_trapezoidal main_cartpole_trapezoidal.cpp)
 include_directories(main_cartpole_trapezoidal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(main_cartpole_trapezoidal PRIVATE ipopt ifopt::ifopt_ipopt)
+target_link_libraries(main_cartpole_trapezoidal PRIVATE ipopt ifopt::ifopt_ipopt pinocchio::pinocchio)
+
+add_executable(main_load_cartpole main_load_cartpole_urdf.cpp)
+include_directories(main_load_cartpole PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(main_load_cartpole PRIVATE pinocchio::pinocchio)
