@@ -1,11 +1,11 @@
-#include "trapezoidal_collocation_contraints.hpp"
+#include "trapezoidal_collocation_constraints.hpp"
 
 std::vector<Eigen::Triplet<double>> sparseMatrixToTriplets(
     const ifopt::Component::Jacobian &mat,
     const int row_start,
     const int col_start)
 {
-    std::vector<Eigen::Triplet<Scalar>> triplets;
+    std::vector<Eigen::Triplet<double>> triplets;
     // Reserve space to avoid reallocations, the number of non-zeros is a good
     // estimate
     triplets.reserve(mat.nonZeros());
@@ -30,8 +30,8 @@ TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     const int control_len,
     const double dt_segment,
     const DynFn &dyn_fn,
-    const JacobianDynFn &jac_dyn_fn_wrt_state,
-    const JacobianDynFn &jac_dyn_fn_wrt_control)
+    const JacobianDynFn &jac_dyn_wrt_state_fn,
+    const JacobianDynFn &jac_dyn_wrt_control_fn)
     : ConstraintSet(num_constraints, "trap_col_constraints")
     , m_state_var_set_name{state_var_set_name}
     , m_state_len{state_len}
@@ -39,15 +39,15 @@ TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     , m_control_len{control_len}
     , m_dt_segment{dt_segment}
     , m_dyn_fn{dyn_fn}
-    , m_jac_dyn_fn_wrt_state{jac_dyn_fn_wrt_state}
-    , m_jac_dyn_fn_wrt_control{jac_dyn_fn_wrt_control}
+    , m_jac_dyn_wrt_state_fn{jac_dyn_wrt_state_fn}
+    , m_jac_dyn_wrt_control_fn{jac_dyn_wrt_control_fn}
 {
     const Eigen::VectorXd state_vars
         = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
-    assert(state_var.size() % m_state_len == 0);
-    const int num_knot_pts = state_var.size() / m_state_len;
+    assert(state_vars.size() % m_state_len == 0);
+    const int num_knot_pts = state_vars.size() / m_state_len;
     m_num_segments = num_knot_pts - 1;
-    assert(num_constraints == num_segments * m_state_len);
+    assert(num_constraints == m_num_segments * m_state_len);
 }
 
 Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
@@ -63,7 +63,7 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
            == state_vars.size() / m_state_len);
 
     // fill in defect constraint values
-    auto defect_constraints = Eigen::VectorXd::Zero(GetRows());
+    Eigen::VectorXd defect_constraints = Eigen::VectorXd::Zero(GetRows());
 
     // k represents the kth vector constraint equation (defect). The number
     // of vector constraint (defect) equations equals the number of time
@@ -223,16 +223,16 @@ ifopt::Component::Jacobian
     // (for j=k) or dfk1_dxj (for j=k+1) to reduce duplicate
     // code.
     ifopt::Component::Jacobian dfk_dxj
-        = m_jac_dyn_fn_wrt_state(statej, controlj, tj);
+        = m_jac_dyn_wrt_state_fn(state, control, time);
     // jacobian of discrete state. This represents either
     // dxk_dxj (for j=k) or dxk1_dxj (for j=k+1) to reduce
     // duplicate code.
-    auto dxk_dxj
-        = ifopt::Component::Jacobian::Identity(m_state_len, m_state_len);
+    ifopt::Component::Jacobian dxk_dxj(m_state_len, m_state_len);
+    dxk_dxj.setIdentity();
 
     // jacobian of defect k w.r.t state j.
     const auto hk = m_dt_segment;
-    auto dck_dxj = -hk / 2 * dfk_dxj;
+    ifopt::Component::Jacobian dck_dxj = -hk / 2 * dfk_dxj;
     if (k == j) {
         dck_dxj -= dxk_dxj;
     } else {
@@ -260,7 +260,7 @@ ifopt::Component::Jacobian
     // (for j=k) or dfk1_duj (for j=k+1) to reduce duplicate
     // code.
     ifopt::Component::Jacobian dfk_duj
-        = m_jac_dyn_fn_wrt_control(statej, controlj, tj);
+        = m_jac_dyn_wrt_control_fn(state, control, time);
 
     const auto hk = m_dt_segment;
     return -hk / 2 * dfk_duj;

@@ -17,9 +17,12 @@ std::vector<Eigen::Triplet<double>> sparseMatrixToTriplets(
 class TrapezoidalCollocationConstraints final : public ifopt::ConstraintSet
 {
 public:
+    // calback signature for evaluating the dynamics
     using DynFn = std::function<Eigen::VectorXd(const Eigen::VectorXd &state,
                                                 const Eigen::VectorXd &control,
                                                 const double time)>;
+    // callback signature for evaluating the jacobian of the dynamics w.r.t one
+    // of its inputs (eg. state, control, or time)
     using JacobianDynFn = std::function<ifopt::Component::Jacobian(
         const Eigen::VectorXd &state,
         const Eigen::VectorXd &control,
@@ -38,9 +41,9 @@ public:
      * @param dt_segment The fixed duration of every time segement.
      * @param dyn_fn Callback function to get the value of the dynamics
      *   function.
-     * @param jac_dyn_fn_wrt_state Callback function to get the value of the
+     * @param jac_dyn_wrt_state_fn Callback function to get the value of the
      *   jacobian of the dynamics function w.r.t the input state.
-     * @param jac_dyn_fn_wrt_control Callback function to get the value of the
+     * @param jac_dyn_wrt_control_fn Callback function to get the value of the
      *   jacobian of the dynamics function w.r.t the input state.
      */
     TrapezoidalCollocationConstraints(
@@ -51,8 +54,8 @@ public:
         const int control_len,
         const double dt_segment,
         const DynFn &dyn_fn,
-        const JacobianDynFn &jac_dyn_fn_wrt_state,
-        const JacobianDynFn &jac_dyn_fn_wrt_control);
+        const JacobianDynFn &jac_dyn_wrt_state_fn,
+        const JacobianDynFn &jac_dyn_wrt_control_fn);
     // Get the current values of all constraints
     Eigen::VectorXd GetValues() const override;
 
@@ -117,8 +120,8 @@ private:
     const int m_control_len;
     const double m_dt_segment;
     const DynFn m_dyn_fn;
-    const JacobianDynFn m_jac_dyn_fn_wrt_state;
-    const JacobianDynFn m_jac_dyn_fn_wrt_control;
+    const JacobianDynFn m_jac_dyn_wrt_state_fn;
+    const JacobianDynFn m_jac_dyn_wrt_control_fn;
     int m_num_segments;
     Eigen::Vector4d m_x;
 };

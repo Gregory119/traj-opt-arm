@@ -5,8 +5,12 @@
 #include <ifopt/problem.h>
 
 // #include "control_effort_trapezoidal_cost.hpp"
+#include "pinocchio/algorithm/aba-derivatives.hpp"
+#include "pinocchio/parsers/urdf.hpp"
 #include "trajectory_variables.hpp"
 #include "trapezoidal_collocation_constraints.hpp"
+
+namespace pin = pinocchio;
 
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
@@ -52,51 +56,184 @@ ifopt::Component::VecBound createControlBounds(const int num_control_vars,
     return bounds;
 }
 
-struct CartpoleDynConsts
+Eigen::VectorXd cartpoleDyn(const Eigen::VectorXd &state,
+                            const Eigen::VectorXd &control,
+                            const double /*time*/,
+                            const pin::Model &model)
 {
-    constexpr double l = 0.5;
-    constexpr double m1 = 2.0;
-    constexpr double m2 = 0.5;
-    constexpr double g = 9.81;
-}
+    // data required by algorithm
+    pin::Data data(model);
 
-Eigen::VectorXd
-    cartpoleDyn(const Eigen::VectorXd &state,
-                const Eigen::VectorXd &control,
-                const double /*time*/,
-                const CartpoleDynConsts &c)
-{
-    // state = x = [q1, q2, dq1, dq2]
+    // state = x = [q, dq] = [q1, q2, dq1, dq2]
     assert(state.size() == 4);
     // control = [u]
     assert(control.size() == 1);
 
-    auto dx = Eigen::VectorXd::Zero(4);
-    // dx = [dq1, dq2, ddq1, ddq2]
-    const auto q1 = state(0);
-    const auto q2 = state(1);
-    const auto dq1 = state(2);
-    const auto dq2 = state(3);
-    const auto u = control[0];
-    dx(0) = dq1;
-    dx(1) = dq2;
-    dx(2) = (c.l * c.m2 * std::sin(q2) * std::pow(dq2, 2) + u
-             + c.m2 * c.g * std::cos(q2) * std::sin(c.q2))
-            / (c.m1 + c.m2 * (1.0 - std::pow(std::cos(q2), 2.0)));
-    dx(3) = -(c.l * c.m2 * std::cos(q2) * std::sin(q2) * std::pow(dq2, 2)
-              + u * std::cos(q2) + (c.m1 + c.m2) * c.g * std::sin(q2))
-            / (c.l * c.m1 + c.l * c.m2 * (1.0 - std::pow(std::cos(q2), 2.0)));
+    // Get the torque. The second joint torque is always zero (underactuated)
+    Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
+    tau(0) = control(0);
+
+    // Get the joint configuration. Note that pinocchio has an additional
+    // universe joint at index 0.
+    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
+    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    // Get the generalized joint velocity.
+    const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
+
+    // calculate the forward dynamics = [dq, ddq]
+    pin::aba(model, data, q, v, tau);
+    Eigen::VectorXd dx = Eigen::VectorXd::Zero(2 * model.nv);
+    dx << v, data.ddq;  // concatenate
     return dx;
 }
 
-int main(int /*argc*/, char ** /*argv*/)
+ifopt::Component::Jacobian jacCartpoleDynWrtState(
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double /*time*/,
+    const pin::Model &model)
 {
+    // data required by algorithm
+    pin::Data data(model);
+
+    // state = x = [q, dq] = [q1, q2, dq1, dq2]
+    assert(state.size() == 4);
+    // control = [u]
+    assert(control.size() == 1);
+
+    // Get the torque. The second joint torque is always zero (underactuated)
+    Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
+    tau(0) = control(0);
+
+    // Get the joint configuration. Note that pinocchio has an additional
+    // universe joint at index 0.
+    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
+    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    // Get the generalized joint velocity.
+    const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
+
+    // calculate the partial derivative of generalized joint acceleration w.r.t
+    // the generalized joint configuration, joint velocity, and joint torque
+    pin::computeABADerivatives(model, data, q, v, tau);
+
+    /*
+      Jacobian of the forward dynamics function f w.r.t the state x=[q v] is:
+      df/dx = [df/dq df/dv] =
+      [dv/dq dv/dv;
+       da/dq da/dv] =
+      [0 I;
+       da/dq da/dv]
+      where v = dq/dt, a = dv / dt
+
+      Note that the zero submatrix and identity submatrix each have
+      size=(state_len/2 x state_len/2)
+     */
+
+    const int state_len = state.size();
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(state_len/2 + state_len/2*state_len);
+    // fill in dv/dv=I
+    for (int i{}; i < state_len / 2; ++i) {
+        for (int j = state_len / 2; j < state_len; ++j) {
+            triplets.push_back({i, j, 1.0});
+        }
+    }
+    // fill in da/dq
+    for (int i{}; i < data.ddq_dq.rows(); ++i) {
+        for (int j{}; j < data.ddq_dq.cols(); ++j) {
+            triplets.push_back({i + state_len / 2, j, data.ddq_dq(i, j)});
+        }
+    }
+    // fill in da/dv
+    for (int i{}; i < data.ddq_dq.rows(); ++i) {
+        for (int j{}; j < data.ddq_dq.cols(); ++j) {
+            triplets.push_back(
+                {i + state_len / 2, j + state_len / 2, data.ddq_dv(i, j)});
+        }
+    }
+    ifopt::Component::Jacobian jac(state_len, state_len);
+    jac.setFromTriplets(triplets.cbegin(), triplets.cend());
+    return jac;
+}
+
+// todo: currently pin::computeABADerivatives() gets called twice for the same
+// computation in jacCartpoleDynWrtState() and jacCartpoleDynWrtControl(). This
+// is redundant because pin::computeABADerivatives() calculates the derivates
+// required for the jacobian w.r.t the state and w.r.t the control. An
+// optimization would be to refactor the code so that
+// pin::computeABADerivatives() only gets called once between these two
+// functions.
+ifopt::Component::Jacobian jacCartpoleDynWrtControl(
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double /*time*/,
+    const pin::Model &model)
+{
+    // data required by algorithm
+    pin::Data data(model);
+
+    // state = x = [q, dq] = [q1, q2, dq1, dq2]
+    assert(state.size() == 4);
+    // control = [u]
+    assert(control.size() == 1);
+
+    // Get the torque. The second joint torque is always zero (underactuated)
+    Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
+    tau(0) = control(0);
+
+    // Get the joint configuration. Note that pinocchio has an additional
+    // universe joint at index 0.
+    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
+    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    // Get the generalized joint velocity.
+    const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
+
+    // calculate the partial derivative of generalized joint acceleration w.r.t
+    // the generalized joint configuration, joint velocity, and joint torque
+    pin::computeABADerivatives(model, data, q, v, tau);
+
+    /*
+      Jacobian of the forward dynamics function f w.r.t the control u=[tau(0)]
+      is:
+      df/du = df/dtau(0) =
+      [dv/dtau(0);
+       da/dtau(0)] =
+      [0;
+       da/dtau(0)]
+      where v = dq/dt, a = dv / dt
+     */
+
+    const int state_len = state.size();
+    std::vector<Eigen::Triplet<double>> triplets;
+    triplets.reserve(state_len/2);
+    // fill da/dtau(0), which is the first column of da/dtau, where tau is the
+    // generalized joint vector.
+    for (int i{}; i < state_len / 2; ++i) {
+        triplets.push_back({i + state_len / 2, 0, data.ddq_dtau(i, 0)});
+    }
+    ifopt::Component::Jacobian jac(state_len, 1);
+    jac.setFromTriplets(triplets.cbegin(), triplets.cend());
+    return jac;
+}
+
+int main(int argc, char ** argv)
+{
+    if (argc != 2) {
+        std::cout << "Path to model required." << std::endl;
+        return 0;
+    }
+
+    // Load the urdf model
+    const std::string urdf_filename = argv[1];
+    pin::Model model;
+    pin::urdf::buildModel(urdf_filename, model);
+    std::cout << "model name: " << model.name << std::endl;
+
     // define problem
     ifopt::Problem nlp;
     const double traj_dur = 2.0;
     const int num_segments = 100;
     const double dt_segment = traj_dur / num_segments;
-    const CartpoleDynConsts dyn_consts{};
 
     // final q0 position
     const double d = 0.8;
@@ -135,7 +272,17 @@ int main(int /*argc*/, char ** /*argv*/)
     const auto dyn_fn = [&](const Eigen::VectorXd &state,
                             const Eigen::VectorXd &control,
                             const double time) {
-        cartpoleDyn(state, control, time, dyn_consts);
+        return cartpoleDyn(state, control, time, model);
+    };
+    const auto jac_dyn_wrt_state_fn = [&](const Eigen::VectorXd &state,
+                                          const Eigen::VectorXd &control,
+                                          const double time) {
+        return jacCartpoleDynWrtState(state, control, time, model);
+    };
+    const auto jac_dyn_wrt_control_fn = [&](const Eigen::VectorXd &state,
+                                            const Eigen::VectorXd &control,
+                                            const double time) {
+        return jacCartpoleDynWrtControl(state, control, time, model);
     };
     const int num_constraints = state_len * num_segments;
     nlp.AddConstraintSet(std::make_shared<TrapezoidalCollocationConstraints>(
@@ -146,9 +293,8 @@ int main(int /*argc*/, char ** /*argv*/)
         control_len,
         dt_segment,
         dyn_fn,
-        // todo: jac_dyn_fn_wrt_state,
-        // todo: jac_dyn_fn_wrt_control
-        ));
+        jac_dyn_wrt_state_fn,
+        jac_dyn_wrt_control_fn));
     // nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>());
     // nlp.PrintCurrent();
 
