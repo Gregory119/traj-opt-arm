@@ -16,6 +16,9 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       # This enables using the CPU for graphics, which is very slow!
       #- LIBGL_ALWAYS_SOFTWARE=1
+      # Set CMAKE variables to find installed packages
+      - CMAKE_PREFIX_PATH=/home/ubuntu/Downloads/mujoco_install:${CMAKE_PREFIX_PATH}
+      - CMAKE_PREFIX_PATH=/opt/openrobots:$CMAKE_PREFIX_PATH
     runtime: nvidia
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
