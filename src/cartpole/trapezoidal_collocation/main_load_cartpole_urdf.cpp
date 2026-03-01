@@ -3,6 +3,7 @@
 #include "pinocchio/algorithm/joint-configuration.hpp"
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/rnea.hpp"
+#include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 
 int main(int argc, char **argv)
@@ -44,4 +45,13 @@ int main(int argc, char **argv)
     // calculate joint torques using inverse dynamics
     const Eigen::VectorXd &tau = pin::rnea(model, data, q, v, a);
     std::cout << "tau = " << tau.transpose() << std::endl;
+
+    // calculate the partial derivative of generalized joint acceleration w.r.t
+    // the generalized joint configuration, joint velocity, and joint torque
+    pin::computeABADerivatives(model, data, q, v, tau);
+    std::cout << std::endl << std::endl;
+    std::cout << "Jacobians of forward dynamics:" << std::endl;
+    std::cout << "da_dq = \n" << data.ddq_dq << std::endl;
+    std::cout << "da_dv = \n" << data.ddq_dv << std::endl;
+    std::cout << "da_dtau = \n" << data.ddq_dtau << std::endl;
 }
