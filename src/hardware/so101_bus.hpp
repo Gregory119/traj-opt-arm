@@ -59,16 +59,8 @@ public:
     bool enable_status_poll{false}; 
     bool record_timing_stats{false};
 
-    //int sync_write_timeout_ms{0};
     int status_read_timeout_ms{25};
-    int status_poll_period_ms{15};
-    int pos_tol_ticks{100};
-    int comms_dead_ms{3000};
-    int stable_polls_required{2};
-
-
-    //int ping_timeout_ms{25};
-    int read_timeout_ms{25};
+    int read_timeout_ms{1};
     int final_settle_ms{1500};
   };
 
@@ -107,17 +99,16 @@ public:
 
   static int  open_port_1Mbps(const char* path);
 
-  bool feetech_ping(uint8_t id, int timeout_ms);
-  bool feetech_write_byte(uint8_t id, uint8_t address, uint8_t value, int timeout_ms);
-  bool feetech_write_bytes(uint8_t id, uint8_t start_address, const uint8_t* data, size_t data_len,
+  [[nodiscard]] bool feetech_ping(uint8_t id, int timeout_ms);
+  [[nodiscard]] bool feetech_write_byte(uint8_t id, uint8_t address, uint8_t value, int timeout_ms);
+  [[nodiscard]] bool feetech_write_bytes(uint8_t id, uint8_t start_address, const uint8_t* data, size_t data_len,
                            int timeout_ms, uint8_t instruc_code, uint8_t* out_error);
-  bool feetech_read_bytes(uint8_t id, uint8_t start_address, uint8_t* out, size_t out_len,
-                          int timeout_ms, uint8_t* out_error);
-  bool feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int timeout_ms);
+  [[nodiscard]] bool feetech_read_bytes(uint8_t id, uint8_t start_address, std::vector<uint8_t>& out, int timeout_ms, uint8_t& out_error);
+  [[nodiscard]] bool feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int timeout_ms);
 
-  bool write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms);
+  [[nodiscard]] bool write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms);
 
-  bool read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_ms);
+  [[nodiscard]] bool read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_ms);
 
 private:
   class Port {

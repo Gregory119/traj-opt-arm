@@ -136,84 +136,87 @@ bool SO101Bus::ping_all() {
 }
 
 
-// read the packet incoming from descriptor fd at location expected_id
-// wait timeout_ms t receive packet
-// out_error is written to if packet is successfully parsed
-// uint8_t out_params stores the parameter data
-// expected_params len is the number of params in bytes
+// read bytes from the port fd until the timeout expires then scan for a valid servo reply frame
+// looks for feetech formatted packet skipping bytes until header is found
+// accepts only frames if ID matches expected_id
+// waits until full frame is available based on LEN
+// given a valid frame, fills reply and returns true only if ERR == 0x00
+// returns false on timeout or no valid frame
+// also returns false on checksum,length, or parsing failure, mismatched ID, or if the servo reports a nonzero error status byte
+
 bool SO101Bus::read_reply(
                 uint8_t expected_id,
                 int timeout_ms,
                 ReplyPacket& reply){
+
     const int fd = port_.fd();
     // format: FF FF ID LEN ERR [params] CHK
     uint8_t r[256]; //initialize an array of 256 bytes
-    int got = 0; // initialize received bytes at 0
-    int start =0;
+    int got = 0;
+    const int header_size = 5;
 
-    reply = ReplyPacket{};
-
-    // read until timeout
-    const int slice_ms = std::max(1, std::min(timeout_ms, 5)); // prevents 0 by clamping between 1 and 5
-    int tries = (timeout_ms + slice_ms - 1) / slice_ms; // number of read attempts
-    if (tries < 1) tries = 1; // start number of tries at 1 instead of 0
-
-    for (int t = 0; t < tries && got < (int)sizeof(r); ++t) { // 
-        ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, slice_ms); //return number of bytes read
-        if (k > 0) got += (int)k; // add bytes read for this try to the total number of bytes read
-
-        // parse
-        while (true) {
-            // 0xFF 0xFF
-            while (start + 1 < got && !(r[start] == 0xFF && r[start + 1] == 0xFF)) {
-                ++start;
-            }
-
-            // wait until FF FF ID LEN ERR received 
-            if (got - start < 5) break;
-
-            const uint8_t id  = r[start + 2];
-            const uint8_t len = r[start + 3];
-
-            // if not target id shift by 1 
-            if (id != expected_id) { ++start; continue; }
-
-            const int frame_bytes = 4 + (int)len;
-
-            // wait until the full frame
-            if (got - start < frame_bytes) break;
-
-            const uint8_t err = r[start + 4];
-            const uint8_t chk = r[start + frame_bytes - 1];
-
-            const int params_len = (int)len - 2;
-            if (params_len < 0) { ++start; continue; }
-
-            // checksum
-            const uint8_t expect = checksum_feetech(&r[start + 2], (size_t)len + 1);
-            if (expect != chk) { ++start; continue; }
-
-            // reply
-            reply.initial      = 0xFFFF;
-            reply.id           = id;
-            reply.data_length  = len;
-            reply.error_status = err;
-            reply.check_sum    = chk;
-            reply.parameters.assign(&r[start + 5], &r[start + 5 + params_len]);
-
-            // return false if servo reports error
-            return (reply.error_status == 0x00);
-        }
-
-        if (start > 0) {
-            const int remaining = got - start;
-            if (remaining > 0) std::memmove(r, r + start, (size_t)remaining);
-            got = remaining;
-            start = 0;
-        }
+    // sanity check
+    if (timeout_ms < 1) {
+        std::cout << "ERROR: SO101Bus::read_reply() - timeout too small" << std::endl;
+        return false;
     }
 
-    return false; // no valid packet found
+    // read the header
+    while (got < header_size) {
+        // return number of bytes read
+        ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
+        if (k <= 0) {
+            std::cout
+                << "ERROR: SO101Bus::read_reply(). Failed to read "
+                   "header. Either timeout, file descriptor closed, or error."
+                << std::endl;
+            return false;
+        }
+
+        got += static_cast<int>(k);
+    }
+    // header is now parsed so fill it in the packet
+    std::memcpy(&reply.initial, r, sizeof(reply.initial));
+    reply.id = r[2];
+    reply.data_length = r[3];
+    reply.error_status = r[4];
+
+    // read the data and the checksum
+    const int checksum_size = 1;
+    const int packet_size = header_size + reply.data_length + checksum_size;
+    while (got < packet_size) {
+        // return number of bytes read
+        ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
+        if (k <= 0) {
+            std::cout
+                << "ERROR: SO101Bus::read_reply(). Failed to read "
+                   "data and checksum. Either timeout, file descriptor closed, or error."
+                << std::endl;
+            return false;
+        }
+
+        got += static_cast<int>(k);
+    }
+    // fill remaining data into reply packet
+    reply.parameters.assign(r + header_size,
+                            r + header_size + reply.data_length);
+    reply.check_sum = r[packet_size - 1];
+
+    // checksum check
+    if (checksum_feetech(r + header_size, reply.data_length)
+        != reply.check_sum) {
+        std::cout << "ERROR: SO101Bus::read_reply(). Checksum match failure."
+                  << std::endl;
+        return false;
+    }
+
+    // check error
+    if (reply.error_status != 0) {
+        std::cout << "ERROR: SO101Bus::read_reply(). Servo in error status."
+                  << std::endl;
+        return false;
+    }
+    return true;
 }
 
 // SO101Bus::Port, bind the lifetime of the FD to the lifetime of the port object
@@ -358,14 +361,12 @@ bool SO101Bus::feetech_write_bytes(uint8_t id,
     return true;
 }
 
-bool SO101Bus::feetech_read_bytes(uint8_t id,
-                                  uint8_t start_address,
-                                  uint8_t* out,
-                                  size_t out_len,
-                                  int timeout_ms,
-                                  uint8_t* out_error) {
+bool SO101Bus::feetech_read_bytes(uint8_t id, uint8_t start_address,
+                                  std::vector<uint8_t>& out,
+                                  int timeout_ms, uint8_t& out_error) {
+    if (!ensure_connected_()) return false;
     const int fd = port_.fd();
-    if (!out && out_len != 0) { errno = EINVAL; return false; } // if no data with nonzero data length, write error code and return false
+    const size_t out_len = out.size();
     if (out_len > 250) { errno = EINVAL; return false; } // check max length
 
     // formar FF FF ID 04 02 <addr> <len> CHK
@@ -384,13 +385,13 @@ bool SO101Bus::feetech_read_bytes(uint8_t id,
 
     ReplyPacket reply;
     const bool ok = read_reply(id, timeout_ms, reply);
-    if (out_error) *out_error = reply.error_status;
+    out = reply.parameters;
     if (!ok) {
       if (reply.initial == 0) errno = ETIMEDOUT;
       return false;
     }
     if (reply.parameters.size() != out_len) return false;
-    if (out_len) std::memcpy(out, reply.parameters.data(), out_len);
+    out = reply.parameters;
     return true;
 }
 
@@ -398,16 +399,21 @@ bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int ti
     const int fd = port_.fd();
     if (!out) { errno = EINVAL; return false; } //error code if out address is not valid
 
+
+
     // position documented at 0x38 2 bytes
     const uint8_t START = 0x38;
     const size_t  N     = 8;
 
+    std::vector<uint8_t> tmp(N);
+
     uint8_t err = 0xFF; // initialize error byte
-    if (!feetech_read_bytes(id, START, out->raw, N, timeout_ms, &err)) {
+    if (!feetech_read_bytes(id, START, tmp, timeout_ms, err)) {
         out->error = err; // write error code to ServoStateBasic object
         return false; // return false when a read fail occurs
     }
     out->error = err; // copy error byte to ServoStateBasic object
+    if (N) std::memcpy(out->raw, tmp.data(), N);
 
     auto u16 = [&](int idx) -> uint16_t { // 16 bit unsigned int from combined bytes 
         return (uint16_t)out->raw[idx] | ((uint16_t)out->raw[idx + 1] << 8); // combine low and high bytes into a 16 bit unsinged int

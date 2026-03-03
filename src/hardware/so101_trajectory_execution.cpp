@@ -40,7 +40,6 @@ int main(int argc, char** argv) {
   const double T  = 5.0; //total time
   const int steps = static_cast<int>(T / dt); 
   for (int k = 0; k <= steps; ++k) {
-    //traj.push_back(wp(k * dt, 90, 45, 110, 90, 90, 0));
     traj.push_back(TrajElement{.time= k * dt, .val={90, 45, 110, 90, 90, 0}});
   }
 
