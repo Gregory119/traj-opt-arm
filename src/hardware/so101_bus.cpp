@@ -144,6 +144,7 @@ bool SO101Bus::ping_all() {
 // returns false on timeout or no valid frame
 // also returns false on checksum,length, or parsing failure, mismatched ID, or if the servo reports a nonzero error status byte
 
+
 bool SO101Bus::read_reply(
                 uint8_t expected_id,
                 int timeout_ms,
@@ -182,8 +183,13 @@ bool SO101Bus::read_reply(
     reply.error_status = r[4];
 
     // read the data and the checksum
-    const int checksum_size = 1;
-    const int packet_size = header_size + reply.data_length + checksum_size;
+    const int checksum_size = 1; //this variable is no longer used
+    /*
+    const int packet_size = header_size + reply.data_length + checksum_size; //this is an incorrect packet size, the LEN byte already 
+                                                                            //includes ERR and CHK
+    */
+    const int packet_size = 4+ reply.data_length; //total packet size will always be 4 greater than the LEN parameter
+
     while (got < packet_size) {
         // return number of bytes read
         ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
@@ -198,12 +204,23 @@ bool SO101Bus::read_reply(
         got += static_cast<int>(k);
     }
     // fill remaining data into reply packet
+    /*
     reply.parameters.assign(r + header_size,
-                            r + header_size + reply.data_length);
-    reply.check_sum = r[packet_size - 1];
+                            r + header_size + reply.data_length); // LEN includes ERR and CHK so we need to remove those bytes to get param length
+    */
+    const int params_len = (int)reply.data_length - 2;
+    reply.parameters.assign(r + header_size,
+                            r + header_size + params_len);
+    reply.check_sum = r[packet_size -1];
+
+
 
     // checksum check
-    if (checksum_feetech(r + header_size, reply.data_length)
+
+    /*if (checksum_feetech(r + header_size, reply.data_length)
+        != reply.check_sum) {*/     //this overshoots the actual start of the data and also excludes the CHK byte
+    
+    if (checksum_feetech(&r[2] , reply.data_length+1)
         != reply.check_sum) {
         std::cout << "ERROR: SO101Bus::read_reply(). Checksum match failure."
                   << std::endl;
@@ -218,6 +235,7 @@ bool SO101Bus::read_reply(
     }
     return true;
 }
+
 
 // SO101Bus::Port, bind the lifetime of the FD to the lifetime of the port object
 
