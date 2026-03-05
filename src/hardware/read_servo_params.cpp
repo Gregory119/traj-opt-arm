@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    int fd = arm.fd();
+    //int fd = arm.fd();
 
 
     //const char* device = (argc >= 2) ? argv[1] : "/dev/ttyACM0"; // path to device
@@ -43,12 +43,12 @@ int main(int argc, char** argv) {
     if (rate_hz <= 0.1) rate_hz = 0.1;
     if (rate_hz > 100.0) rate_hz = 100.0;
 
-    
+    /*    
     if (fd < 0) {
         std::fprintf(stderr, "cant open %s: %s\n", device.c_str(), std::strerror(errno)); // return error code and close port if configuration fails
         return 1;
     }
-
+    */
     std::signal(SIGINT, on_sigint); // set the sig handler 
     std::atexit(restore_terminal); // register the function to call at program termination
 
@@ -72,11 +72,11 @@ int main(int argc, char** argv) {
         for (int id = 1; id <= 6; ++id) { //iterate through all 6 servo IDs(generalize for any ID set later)
             //add class object here too
             SO101Bus::ServoStateBasic st{}; // initialize ServoStateBasic object. Data written to here
-            bool ok = SO101Bus::feetech_read_state_basic(fd, (uint8_t)id, &st, 40); //read the state for the current servo ID, returns true if valid packet is received
+            bool ok = arm.feetech_read_state_basic((uint8_t)id, &st, 40); //read the state for the current servo ID, returns true if valid packet is received
 
             if (!ok) { // execute on failed read
                 // no reply then show ping
-                bool alive = SO101Bus::feetech_ping(fd, (uint8_t)id, 10);
+                bool alive = arm.feetech_ping((uint8_t)id, 10);
                 std::printf(" %2d |  ----  |  ----   |  ----   |  ----  | ---- | %s |\n",
                             id, alive ? "PING" : "----"); //replace data display for the current ID with this
                 continue; // skip current iteration
