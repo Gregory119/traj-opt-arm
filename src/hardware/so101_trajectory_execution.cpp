@@ -27,14 +27,6 @@ int main(int argc, char** argv) {
   }
 
   std::deque<TrajElement> traj;
-  /*
-  traj.push_back(wp(0.0,  90,  45,  110,  90,  90,  0));
-  traj.push_back(wp(1.0, 100,  90,  110,  90,  45,  0));
-  traj.push_back(wp(2.0, 110, 45,  110,  90,  135,  0));
-  traj.push_back(wp(3.0,  90, 90,  110, 100,  90,  0));
-  traj.push_back(wp(4.0,  60,  45,  110, 110,  45, 0));
-  traj.push_back(wp(5.0,  70,  90,  110,  90,  135,  0));
-  */
   
   const double dt = 0.020; //step in s
   const double T  = 5.0; //total time

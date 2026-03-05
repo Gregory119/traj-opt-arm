@@ -181,14 +181,17 @@ bool SO101Bus::read_reply(
     reply.id = r[2];
     reply.data_length = r[3];
     reply.error_status = r[4];
-
-    // read the data and the checksum
-    const int checksum_size = 1; //this variable is no longer used
-    /*
-    const int packet_size = header_size + reply.data_length + checksum_size; //this is an incorrect packet size, the LEN byte already 
-                                                                            //includes ERR and CHK
-    */
     const int packet_size = 4+ reply.data_length; //total packet size will always be 4 greater than the LEN parameter
+
+    // id check
+    if(reply.id != expected_id){
+        std::cout
+            <<"ERROR: SO101Bus::read_reply(). Replying servo ID does not match the requested ID or stream misalignment is causing"
+              "the wrong byte to be read as ID. Exiting"
+            << std::endl;
+        return false;
+    }
+
 
     while (got < packet_size) {
         // return number of bytes read
@@ -203,11 +206,10 @@ bool SO101Bus::read_reply(
 
         got += static_cast<int>(k);
     }
+
     // fill remaining data into reply packet
-    /*
-    reply.parameters.assign(r + header_size,
-                            r + header_size + reply.data_length); // LEN includes ERR and CHK so we need to remove those bytes to get param length
-    */
+    // LEN includes ERR and CHK so we need to remove those bytes to get param length
+
     const int params_len = (int)reply.data_length - 2;
     reply.parameters.assign(r + header_size,
                             r + header_size + params_len);
@@ -216,9 +218,6 @@ bool SO101Bus::read_reply(
 
 
     // checksum check
-
-    /*if (checksum_feetech(r + header_size, reply.data_length)
-        != reply.check_sum) {*/     //this overshoots the actual start of the data and also excludes the CHK byte
     
     if (checksum_feetech(&r[2] , reply.data_length+1)
         != reply.check_sum) {
@@ -385,7 +384,7 @@ bool SO101Bus::feetech_read_bytes(uint8_t id, uint8_t start_address,
     if (!ensure_connected_()) return false;
     const int fd = port_.fd();
     const size_t out_len = out.size();
-    if (out_len > 250) { errno = EINVAL; return false; } // check max length
+    //if (out_len > 250) { errno = EINVAL; return false; } // check max length
 
     // formar FF FF ID 04 02 <addr> <len> CHK
     uint8_t body[5] = { // set body bytes
@@ -409,7 +408,6 @@ bool SO101Bus::feetech_read_bytes(uint8_t id, uint8_t start_address,
       return false;
     }
     if (reply.parameters.size() != out_len) return false;
-    out = reply.parameters;
     return true;
 }
 
