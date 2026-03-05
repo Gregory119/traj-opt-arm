@@ -6,6 +6,9 @@
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 
+// This is a basic example of using pinnochio to load a cartpole model and
+// perform some calculations.
+
 int main(int argc, char **argv)
 {
     namespace pin = pinocchio;

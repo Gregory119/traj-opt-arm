@@ -123,5 +123,4 @@ private:
     const JacobianDynFn m_jac_dyn_wrt_state_fn;
     const JacobianDynFn m_jac_dyn_wrt_control_fn;
     int m_num_segments;
-    Eigen::Vector4d m_x;
 };

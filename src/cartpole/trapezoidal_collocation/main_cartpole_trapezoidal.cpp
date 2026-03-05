@@ -12,6 +12,11 @@
 
 namespace pin = pinocchio;
 
+/*
+ * Create an upper and lower bound for each state vector along the trajectory.
+ * @param d Final position of the cart.
+ * @param d_max Maximum position of the cart at any time along the trajectory.
+ */
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
                                              const double d,
@@ -56,6 +61,10 @@ ifopt::Component::VecBound createControlBounds(const int num_control_vars,
     return bounds;
 }
 
+/*
+ * Calculate the output of the cartpole dynamics function given the current
+ * state, and control input.
+ */
 Eigen::VectorXd cartpoleDyn(const Eigen::VectorXd &state,
                             const Eigen::VectorXd &control,
                             const double /*time*/,
@@ -87,6 +96,10 @@ Eigen::VectorXd cartpoleDyn(const Eigen::VectorXd &state,
     return dx;
 }
 
+/*
+ * Calculate the jacobian of the cartpole dynamics function w.r.t the state
+ * input.
+ */
 ifopt::Component::Jacobian jacCartpoleDynWrtState(
     const Eigen::VectorXd &state,
     const Eigen::VectorXd &control,
@@ -155,6 +168,11 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
     jac.setFromTriplets(triplets.cbegin(), triplets.cend());
     return jac;
 }
+
+/*
+ * Calculate the jacobian of the cartpole dynamics function w.r.t the control
+ * input.
+ */
 
 // todo: currently pin::computeABADerivatives() gets called twice for the same
 // computation in jacCartpoleDynWrtState() and jacCartpoleDynWrtControl(). This
