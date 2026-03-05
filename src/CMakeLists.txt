@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # find libraries that should already be installed
 find_package(mujoco REQUIRED)
 find_package(glfw3 REQUIRED)
+find_package(Threads REQUIRED)
+
 find_package(ifopt)
 find_package(pinocchio REQUIRED)
 
@@ -36,14 +38,17 @@ add_compile_definitions(HAVE_CSTDDEF)
 #######################################################################
 # Executeables
 #######################################################################
-add_executable(traj_opt_arm main.cpp simulator.cpp periodic_sim_timer.cpp)
-target_include_directories(traj_opt_arm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_executable(traj_opt_arm main.cpp simulator.cpp periodic_sim_timer.cpp )
+target_include_directories(traj_opt_arm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} )
 target_link_libraries(
   traj_opt_arm
   mujoco::mujoco
   glfw
   ipopt
 )
+
+
+
 
 # If your application uses windowing (e.g., for a viewer using GLFW), 
 # you may need to find and link additional libraries like OpenGL and GLFW.
@@ -53,3 +58,4 @@ target_link_libraries(
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/hardware)
