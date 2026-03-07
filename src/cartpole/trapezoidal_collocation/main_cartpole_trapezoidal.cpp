@@ -4,7 +4,7 @@
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
 
-// #include "control_effort_trapezoidal_cost.hpp"
+#include "control_effort_trapezoidal_cost.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 #include "trajectory_variables.hpp"
@@ -144,7 +144,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
 
     const int state_len = state.size();
     std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(state_len/2 + state_len/2*state_len);
+    triplets.reserve(state_len / 2 + state_len / 2 * state_len);
     // fill in dv/dv=I
     for (int i{}; i < state_len / 2; ++i) {
         for (int j = state_len / 2; j < state_len; ++j) {
@@ -223,7 +223,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
 
     const int state_len = state.size();
     std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(state_len/2);
+    triplets.reserve(state_len / 2);
     // fill da/dtau(0), which is the first column of da/dtau, where tau is the
     // generalized joint vector.
     for (int i{}; i < state_len / 2; ++i) {
@@ -234,7 +234,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     return jac;
 }
 
-int main(int argc, char ** argv)
+int main(int argc, char **argv)
 {
     if (argc != 2) {
         std::cout << "Path to model required." << std::endl;
@@ -250,7 +250,7 @@ int main(int argc, char ** argv)
     // define problem
     ifopt::Problem nlp;
     const double traj_dur = 2.0;
-    const int num_segments = 100;
+    const int num_segments = 10;
     const double dt_segment = traj_dur / num_segments;
 
     // final q0 position
@@ -313,8 +313,12 @@ int main(int argc, char ** argv)
         dyn_fn,
         jac_dyn_wrt_state_fn,
         jac_dyn_wrt_control_fn));
-    // nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>());
-    // nlp.PrintCurrent();
+    nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>(
+        "effort_cost",
+        traj_control_vars->GetName(),
+        control_len,
+        dt_segment));
+    nlp.PrintCurrent();
 
     // choose solver and options
     ifopt::IpoptSolver ipopt;
