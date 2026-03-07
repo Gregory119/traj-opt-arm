@@ -1,7 +1,5 @@
-#include "simulator.hpp"
-
 #include "IpIpoptApplication.hpp"
-
+#include "simulator.hpp"
 
 // main function
 int main(int argc, const char **argv)

@@ -1,16 +1,17 @@
-# Optional: Set the path to the MuJoCo installation folder if it's not in a standard location.
-# Replace "/opt/mujoco" with your actual MuJoCo installation path.
-# set(MUJOCO_FOLDER "/opt/mujoco/lib/cmake")
-#set(MUJOCO_FOLDER "/home/greg/dev/repos/mujoco/install/lib/cmake/mujoco")
-#export CMAKE_PREFIX_PATH=/home/greg/dev/repos/mujoco/install/lib/cmake/mujoco
+cmake_minimum_required(VERSION 3.22)
+project(RobotArmTrajectoryOptimization VERSION 1.0 LANGUAGES CXX)
 
-# Find the MuJoCo package. If MUJOCO_FOLDER is set, it will search there first.
-# Otherwise, it relies on CMAKE_PREFIX_PATH or standard system paths.
+# c++ standard
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# find libraries that should already be installed
 find_package(mujoco REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(Threads REQUIRED)
 
 find_package(ifopt)
+find_package(pinocchio REQUIRED)
 
 # --- manually add IPOPT as a library ---
 add_library(ipopt SHARED IMPORTED)
@@ -32,6 +33,7 @@ target_include_directories(
 # globally define use of the C std library for IPOPT
 add_compile_definitions(HAVE_CSTDDEF)
 # --- IPOPT library added ---
+
 
 #######################################################################
 # Executeables
@@ -55,4 +57,5 @@ target_link_libraries(
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)
-add_subdirectory(hardware)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/hardware)
