@@ -305,9 +305,9 @@ int main(int argc, char **argv)
     const int num_constraints = state_len * num_segments;
     nlp.AddConstraintSet(std::make_shared<TrapezoidalCollocationConstraints>(
         num_constraints,
-        traj_state_vars->GetName(),
+        traj_state_vars,
         state_len,
-        traj_control_vars->GetName(),
+        traj_control_vars,
         control_len,
         dt_segment,
         dyn_fn,

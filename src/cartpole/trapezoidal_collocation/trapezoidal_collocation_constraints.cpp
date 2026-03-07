@@ -24,43 +24,39 @@ std::vector<Eigen::Triplet<double>> sparseMatrixToTriplets(
 
 TrapezoidalCollocationConstraints::TrapezoidalCollocationConstraints(
     const int num_constraints,
-    const std::string &state_var_set_name,
+    const std::shared_ptr<TrajectoryVariables> &state_vars,
     const int state_len,
-    const std::string &control_var_set_name,
+    const std::shared_ptr<TrajectoryVariables> &ctrl_vars,
     const int control_len,
     const double dt_segment,
     const DynFn &dyn_fn,
     const JacobianDynFn &jac_dyn_wrt_state_fn,
     const JacobianDynFn &jac_dyn_wrt_control_fn)
     : ConstraintSet(num_constraints, "trap_col_constraints")
-    , m_state_var_set_name{state_var_set_name}
+    , m_state_vars{state_vars}
     , m_state_len{state_len}
-    , m_control_var_set_name{control_var_set_name}
+    , m_ctrl_vars{ctrl_vars}
     , m_control_len{control_len}
     , m_dt_segment{dt_segment}
     , m_dyn_fn{dyn_fn}
     , m_jac_dyn_wrt_state_fn{jac_dyn_wrt_state_fn}
     , m_jac_dyn_wrt_control_fn{jac_dyn_wrt_control_fn}
 {
-    const Eigen::VectorXd state_vars
-        = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
-    assert(state_vars.size() % m_state_len == 0);
-    const int num_knot_pts = state_vars.size() / m_state_len;
+    const Eigen::VectorXd state_vec = m_state_vars->GetValues();
+    assert(state_vec.size() % m_state_len == 0);
+    const int num_knot_pts = state_vec.size() / m_state_len;
     m_num_segments = num_knot_pts - 1;
     assert(num_constraints == m_num_segments * m_state_len);
 }
 
 Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
 {
-    const Eigen::VectorXd state_vars
-        = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
-    const Eigen::VectorXd control_vars
-        = GetVariables()->GetComponent(m_control_var_set_name)->GetValues();
+    const Eigen::VectorXd state_vec = m_state_vars->GetValues();
+    const Eigen::VectorXd ctrl_vec = m_ctrl_vars->GetValues();
 
-    assert(state_vars.size() % m_state_len == 0);
-    assert(control_vars.size() % m_control_len == 0);
-    assert(control_vars.size() / m_control_len
-           == state_vars.size() / m_state_len);
+    assert(state_vec.size() % m_state_len == 0);
+    assert(ctrl_vec.size() % m_control_len == 0);
+    assert(ctrl_vec.size() / m_control_len == state_vec.size() / m_state_len);
 
     // fill in defect constraint values
     Eigen::VectorXd defect_constraints = Eigen::VectorXd::Zero(GetRows());
@@ -71,9 +67,9 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
     for (int k{}; k < m_num_segments; ++k) {
         // get state and control k
         auto state_view_k
-            = state_vars(Eigen::seqN(k * m_state_len, m_state_len));
+            = state_vec(Eigen::seqN(k * m_state_len, m_state_len));
         auto control_view_k
-            = control_vars(Eigen::seqN(k * m_control_len, m_control_len));
+            = ctrl_vec(Eigen::seqN(k * m_control_len, m_control_len));
         // time relative to start time of zero
         const double tk = k * m_dt_segment;
         const Eigen::VectorXd fk = m_dyn_fn(state_view_k, control_view_k, tk);
@@ -83,9 +79,9 @@ Eigen::VectorXd TrapezoidalCollocationConstraints::GetValues() const
         // than the number of time segements, so this index should not go
         // out of bounds.
         auto state_view_k1
-            = state_vars(Eigen::seqN((k + 1) * m_state_len, m_state_len));
+            = state_vec(Eigen::seqN((k + 1) * m_state_len, m_state_len));
         auto control_view_k1
-            = control_vars(Eigen::seqN((k + 1) * m_control_len, m_control_len));
+            = ctrl_vec(Eigen::seqN((k + 1) * m_control_len, m_control_len));
         // time relative to start time of zero
         const double tk1 = (k + 1) * m_dt_segment;
         const Eigen::VectorXd fk1
@@ -106,9 +102,9 @@ void TrapezoidalCollocationConstraints::FillJacobianBlock(
     std::string var_set,
     ifopt::Component::Jacobian &jac_block) const
 {
-    if (var_set == m_state_var_set_name) {
+    if (var_set == m_state_vars->GetName()) {
         FillJacobianWrt(VariableType::STATE, jac_block);
-    } else if (var_set == m_control_var_set_name) {
+    } else if (var_set == m_ctrl_vars->GetName()) {
         FillJacobianWrt(VariableType::CONTROL, jac_block);
     }
 }
@@ -131,10 +127,8 @@ void TrapezoidalCollocationConstraints::FillJacobianWrt(
     const VariableType var_type,
     ifopt::Component::Jacobian &jac_block) const
 {
-    const Eigen::VectorXd state_vars
-        = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
-    const Eigen::VectorXd control_vars
-        = GetVariables()->GetComponent(m_control_var_set_name)->GetValues();
+    const Eigen::VectorXd state_vec = m_state_vars->GetValues();
+    const Eigen::VectorXd ctrl_vec = m_ctrl_vars->GetValues();
 
     // use list of triplets to simplify and avoid costly random
     // insertions when constructing the final sparse jacobian matrix
@@ -157,9 +151,9 @@ void TrapezoidalCollocationConstraints::FillJacobianWrt(
     for (size_t k{}; k < k_max; ++k) {
         for (size_t j = k; j < k + 2; ++j) {
             // get state, control, and time at time index j
-            auto statej = state_vars(Eigen::seqN(j * m_state_len, m_state_len));
+            auto statej = state_vec(Eigen::seqN(j * m_state_len, m_state_len));
             auto controlj
-                = control_vars(Eigen::seqN(j * m_control_len, m_control_len));
+                = ctrl_vec(Eigen::seqN(j * m_control_len, m_control_len));
             const double tj = m_dt_segment * j;
             // defects increment for each row
             const int row_start = k * m_state_len;

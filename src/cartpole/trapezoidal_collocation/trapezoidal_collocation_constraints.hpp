@@ -2,6 +2,8 @@
 
 #include <ifopt/constraint_set.h>
 
+#include "trajectory_variables.hpp"
+
 // A utility function to convert a sparse matrix to a vector of
 // triplets. row_start and col_start are used to offset the row and column
 // indices in order to use them for constructing a larger sparse matrix that
@@ -48,9 +50,9 @@ public:
      */
     TrapezoidalCollocationConstraints(
         const int num_constraints,
-        const std::string &state_var_set_name,
+        const std::shared_ptr<TrajectoryVariables> &state_vars,
         const int state_len,
-        const std::string &control_var_set_name,
+        const std::shared_ptr<TrajectoryVariables> &ctrl_vars,
         const int control_len,
         const double dt_segment,
         const DynFn &dyn_fn,
@@ -114,9 +116,9 @@ private:
         const Eigen::VectorXd &control,
         const double time) const;
 
-    const std::string m_state_var_set_name;
+    const std::shared_ptr<TrajectoryVariables> m_state_vars;
     const int m_state_len;
-    const std::string m_control_var_set_name;
+    const std::shared_ptr<TrajectoryVariables> m_ctrl_vars;
     const int m_control_len;
     const double m_dt_segment;
     const DynFn m_dyn_fn;
