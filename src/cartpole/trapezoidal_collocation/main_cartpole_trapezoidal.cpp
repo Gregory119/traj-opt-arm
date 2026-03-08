@@ -82,10 +82,8 @@ Eigen::VectorXd cartpoleDyn(const Eigen::VectorXd &state,
     Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
     tau(0) = control(0);
 
-    // Get the joint configuration. Note that pinocchio has an additional
-    // universe joint at index 0.
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
-    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    // Get the joint configuration.
+    const auto q = state(Eigen::seqN(0, state.size() / 2));
     // Get the generalized joint velocity.
     const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
 
@@ -93,6 +91,12 @@ Eigen::VectorXd cartpoleDyn(const Eigen::VectorXd &state,
     pin::aba(model, data, q, v, tau);
     Eigen::VectorXd dx = Eigen::VectorXd::Zero(2 * model.nv);
     dx << v, data.ddq;  // concatenate
+    // std::cout << "state = \n" << state << std::endl;
+    // std::cout << "control = \n" << control << std::endl;
+    // std::cout << "tau = \n" << tau << std::endl;
+    // std::cout << "q = \n" << q << std::endl;
+    // std::cout << "v = \n" << v << std::endl;
+    // std::cout << "data.ddq = \n" << data.ddq << std::endl;
     return dx;
 }
 
@@ -120,8 +124,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
 
     // Get the joint configuration. Note that pinocchio has an additional
     // universe joint at index 0.
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
-    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    const auto q = state(Eigen::seqN(0, state.size() / 2));
     // Get the generalized joint velocity.
     const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
 
@@ -213,8 +216,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
 
     // Get the joint configuration. Note that pinocchio has an additional
     // universe joint at index 0.
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
-    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    const auto q = state(Eigen::seqN(0, state.size() / 2));
     // Get the generalized joint velocity.
     const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
 
