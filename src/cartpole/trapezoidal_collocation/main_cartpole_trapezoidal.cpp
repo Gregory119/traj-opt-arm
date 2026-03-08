@@ -127,7 +127,17 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
 
     // calculate the partial derivative of generalized joint acceleration w.r.t
     // the generalized joint configuration, joint velocity, and joint torque
-    pin::computeABADerivatives(model, data, q, v, tau);
+    Eigen::MatrixXd ddq_dq = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dv = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dtau = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    pin::computeABADerivatives(model,
+                               data,
+                               q,
+                               v,
+                               tau,
+                               ddq_dq,
+                               ddq_dv,
+                               ddq_dtau);
 
     /*
       Jacobian of the forward dynamics function f w.r.t the state x=[q v] is:
@@ -147,21 +157,23 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
     triplets.reserve(state_len / 2 + state_len / 2 * state_len);
     // fill in dv/dv=I
     for (int i{}; i < state_len / 2; ++i) {
-        for (int j = state_len / 2; j < state_len; ++j) {
-            triplets.push_back({i, j, 1.0});
+        for (int j{}; j < state_len / 2; ++j) {
+            if (i == j) {
+                triplets.push_back({i, j + state_len / 2, 1.0});
+            }
         }
     }
     // fill in da/dq
-    for (int i{}; i < data.ddq_dq.rows(); ++i) {
-        for (int j{}; j < data.ddq_dq.cols(); ++j) {
-            triplets.push_back({i + state_len / 2, j, data.ddq_dq(i, j)});
+    for (int i{}; i < ddq_dq.rows(); ++i) {
+        for (int j{}; j < ddq_dq.cols(); ++j) {
+            triplets.push_back({i + state_len / 2, j, ddq_dq(i, j)});
         }
     }
     // fill in da/dv
-    for (int i{}; i < data.ddq_dq.rows(); ++i) {
-        for (int j{}; j < data.ddq_dq.cols(); ++j) {
+    for (int i{}; i < ddq_dv.rows(); ++i) {
+        for (int j{}; j < ddq_dv.cols(); ++j) {
             triplets.push_back(
-                {i + state_len / 2, j + state_len / 2, data.ddq_dv(i, j)});
+                {i + state_len / 2, j + state_len / 2, ddq_dv(i, j)});
         }
     }
     ifopt::Component::Jacobian jac(state_len, state_len);
@@ -208,7 +220,17 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
 
     // calculate the partial derivative of generalized joint acceleration w.r.t
     // the generalized joint configuration, joint velocity, and joint torque
-    pin::computeABADerivatives(model, data, q, v, tau);
+    Eigen::MatrixXd ddq_dq = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dv = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dtau = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    pin::computeABADerivatives(model,
+                               data,
+                               q,
+                               v,
+                               tau,
+                               ddq_dq,
+                               ddq_dv,
+                               ddq_dtau);
 
     /*
       Jacobian of the forward dynamics function f w.r.t the control u=[tau(0)]
@@ -227,7 +249,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     // fill da/dtau(0), which is the first column of da/dtau, where tau is the
     // generalized joint vector.
     for (int i{}; i < state_len / 2; ++i) {
-        triplets.push_back({i + state_len / 2, 0, data.ddq_dtau(i, 0)});
+        triplets.push_back({i + state_len / 2, 0, ddq_dtau(i, 0)});
     }
     ifopt::Component::Jacobian jac(state_len, 1);
     jac.setFromTriplets(triplets.cbegin(), triplets.cend());
