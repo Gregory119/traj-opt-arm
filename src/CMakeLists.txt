@@ -55,6 +55,7 @@ target_link_libraries(
 # find_package(OpenGL REQUIRED)
 # target_link_libraries(my_app PUBLIC OpenGL::OpenGL glfw)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/trajectory_optimization)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
