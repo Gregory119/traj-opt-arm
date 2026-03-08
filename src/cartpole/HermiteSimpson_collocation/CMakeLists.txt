@@ -1,4 +1,4 @@
-add_executable(main_cartpole_trapezoidal main_cartpole_HS.cpp HermiteSimpson_collocation_constraints.cpp)
+add_executable(main_cartpole_HS main_cartpole_HS.cpp HermiteSimpson_collocation_constraints.cpp control_effort_HS_cost.cpp)
 include_directories(main_cartpole_HS PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(main_cartpole_HS PRIVATE ipopt ifopt::ifopt_ipopt pinocchio::pinocchio)
 
