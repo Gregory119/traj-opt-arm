@@ -4,7 +4,7 @@
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
 
-// #include "control_effort_trapezoidal_cost.hpp"
+#include "control_effort_HS_cost.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 #include "trajectory_variables.hpp"
@@ -19,31 +19,32 @@ namespace pin = pinocchio;
  */
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
-                                             const double d,
-                                             const double d_max)
+                                             const Eigen::VectorXd &state_start,
+                                             const Eigen::VectorXd &state_end)
 {
     // vector of bounds initally all zero
     ifopt::Component::VecBound bounds(num_state_vars);
     // for each state vector
-    for (size_t i{}; i < bounds.size(); i += state_len) {
+    const int num_state_vecs = num_state_vars / state_len;
+    for (size_t i{}; i < num_state_vecs; ++i) {
         if (i == 0) {
             // initial state bounds
             for (int j{}; j < state_len; ++j) {
-                bounds[i + j] = {0.0, 0.0};
+                bounds[i * state_len + j] = {state_start(j), state_start(j)};
             }
-        } else if (i == bounds.size() - 1) {
+        } else if (i == num_state_vecs - 1) {
             // final state bounds
-            bounds[i] = {d, d};
-            bounds[i + 1] = {std::numbers::pi, std::numbers::pi};
-            bounds[i + 2] = {0.0, 0.0};
-            bounds[i + 3] = {0.0, 0.0};
+            for (int j{}; j < state_len; ++j) {
+                bounds[i * state_len + j] = {state_end(j), state_end(j)};
+            }
         } else {
             // path bounds
 
             // bound for q0
-            bounds[i] = {-d_max, d_max};
+            bounds[i * state_len] = {-d_max, d_max};
             // bound for q1
-            bounds[i + 1] = {-2 * std::numbers::pi, 2 * std::numbers::pi};
+            bounds[i * state_len + 1]
+                = {-2 * std::numbers::pi, 2 * std::numbers::pi};
             // bound for dq0
             bounds[i + 2] = {-ifopt::inf, ifopt::inf};
             // bound for dq1
@@ -73,7 +74,8 @@ ifopt::Component::VecBound createControlBounds(const int num_control_vars,
                                                const double max_force)
 {
     // vector of bounds all
-    ifopt::Component::VecBound bounds(num_control_vars, {max_force, max_force});
+    ifopt::Component::VecBound bounds(num_control_vars,
+                                  {-max_force, max_force});
     return bounds;
 }
 
@@ -98,10 +100,8 @@ Eigen::VectorXd cartpoleDyn(const Eigen::VectorXd &state,
     Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
     tau(0) = control(0);
 
-    // Get the joint configuration. Note that pinocchio has an additional
-    // universe joint at index 0.
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
-    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    // Get the joint configuration.
+    const auto q = state(Eigen::seqN(0, state.size() / 2));
     // Get the generalized joint velocity.
     const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
 
@@ -136,14 +136,23 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
 
     // Get the joint configuration. Note that pinocchio has an additional
     // universe joint at index 0.
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
-    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    const auto q = state(Eigen::seqN(0, state.size() / 2));
     // Get the generalized joint velocity.
     const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
 
     // calculate the partial derivative of generalized joint acceleration w.r.t
     // the generalized joint configuration, joint velocity, and joint torque
-    pin::computeABADerivatives(model, data, q, v, tau);
+    Eigen::MatrixXd ddq_dq = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dv = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dtau = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    pin::computeABADerivatives(model,
+                               data,
+                               q,
+                               v,
+                               tau,
+                               ddq_dq,
+                               ddq_dv,
+                               ddq_dtau);
 
     /*
       Jacobian of the forward dynamics function f w.r.t the state x=[q v] is:
@@ -160,24 +169,27 @@ ifopt::Component::Jacobian jacCartpoleDynWrtState(
 
     const int state_len = state.size();
     std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(state_len/2 + state_len/2*state_len);
+    triplets.reserve(state_len / 2 + state_len / 2 * state_len);
     // fill in dv/dv=I
-    for (int i{}; i < state_len / 2; ++i) {
-        for (int j = state_len / 2; j < state_len; ++j) {
-            triplets.push_back({i, j, 1.0});
+        for (int i{}; i < state_len / 2; ++i) {
+            for (int j{}; j < state_len / 2; ++j) {
+                if (i == j) {
+                    triplets.push_back({i, j + state_len / 2, 1.0});
+                }
+            }
         }
-    }
+
     // fill in da/dq
-    for (int i{}; i < data.ddq_dq.rows(); ++i) {
-        for (int j{}; j < data.ddq_dq.cols(); ++j) {
-            triplets.push_back({i + state_len / 2, j, data.ddq_dq(i, j)});
+    for (int i{}; i < ddq_dq.rows(); ++i) {
+        for (int j{}; j < ddq_dq.cols(); ++j) {
+            triplets.push_back({i + state_len / 2, j, ddq_dq(i, j)});
         }
     }
     // fill in da/dv
-    for (int i{}; i < data.ddq_dq.rows(); ++i) {
-        for (int j{}; j < data.ddq_dq.cols(); ++j) {
+    for (int i{}; i < ddq_dv.rows(); ++i) {
+        for (int j{}; j < ddq_dv.cols(); ++j) {
             triplets.push_back(
-                {i + state_len / 2, j + state_len / 2, data.ddq_dv(i, j)});
+                {i + state_len / 2, j + state_len / 2, ddq_dv(i, j)});
         }
     }
     ifopt::Component::Jacobian jac(state_len, state_len);
@@ -217,14 +229,23 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
 
     // Get the joint configuration. Note that pinocchio has an additional
     // universe joint at index 0.
-    Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
-    q(Eigen::seqN(1, model.nq - 1)) = state(Eigen::seqN(0, state.size() / 2));
+    const auto q = state(Eigen::seqN(0, state.size() / 2));
     // Get the generalized joint velocity.
     const auto v = state(Eigen::seqN(state.size() / 2, state.size() / 2));
 
     // calculate the partial derivative of generalized joint acceleration w.r.t
     // the generalized joint configuration, joint velocity, and joint torque
-    pin::computeABADerivatives(model, data, q, v, tau);
+    Eigen::MatrixXd ddq_dq = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dv = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    Eigen::MatrixXd ddq_dtau = Eigen::MatrixXd::Zero(model.nv, model.nv);
+    pin::computeABADerivatives(model,
+                               data,
+                               q,
+                               v,
+                               tau,
+                               ddq_dq,
+                               ddq_dv,
+                               ddq_dtau);
 
     /*
       Jacobian of the forward dynamics function f w.r.t the control u=[tau(0)]
@@ -239,7 +260,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
 
     const int state_len = state.size();
     std::vector<Eigen::Triplet<double>> triplets;
-    triplets.reserve(state_len/2);
+    triplets.reserve(state_len / 2);
     // fill da/dtau(0), which is the first column of da/dtau, where tau is the
     // generalized joint vector.
     for (int i{}; i < state_len / 2; ++i) {
@@ -250,7 +271,24 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     return jac;
 }
 
-int main(int argc, char ** argv)
+Eigen::VectorXd guessStateTraj(const int state_len,
+                               const int num_segments,
+                               const Eigen::VectorXd &state_start,
+                               const Eigen::VectorXd &state_end)
+{
+    const int num_time_pts = num_segments + 1;
+    Eigen::VectorXd ret = Eigen::VectorXd::Zero(num_time_pts * state_len);
+    // linearly interpolate from start state to end state
+    for (int k{}; k < num_time_pts; ++k) {
+        auto statek = ret(Eigen::seqN(k * state_len, state_len));
+        const double alpha
+            = k / (num_time_pts - 1);  // trajectory progress factor
+        statek = alpha * (state_end - state_start) + state_start;
+    }
+    return ret;
+}
+
+int main(int argc, char **argv)
 {
     if (argc != 2) {
         std::cout << "Path to model required." << std::endl;
@@ -266,7 +304,7 @@ int main(int argc, char ** argv)
     // define problem
     ifopt::Problem nlp;
     const double traj_dur = 2.0;
-    const int num_segments = 100;
+    const int num_segments = 10;
     const double dt_segment = traj_dur / num_segments;
 
     // final q0 position
@@ -276,11 +314,18 @@ int main(int argc, char ** argv)
     const double d_max = 2 * d;
     const int state_len = 4;
     const int num_state_vars = (num_segments + 1) * state_len;
-    ifopt::Component::VecBound state_bounds
-        = createStateBounds(num_state_vars, state_len, d, d_max);
+    const Eigen::VectorXd state_end{{d, std::numbers::pi, 0.0, 0.0}};
+    // const Eigen::VectorXd state_start = state_end;
+    const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
+    ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
+                                                                state_len,
+                                                                d_max,
+                                                                state_start,
+                                                                state_end);
 
     // init guess for state variables
-    auto state_init = Eigen::VectorXd::Zero(num_state_vars);
+    auto state_init
+        = guessStateTraj(state_len, num_segments, state_start, state_end);
     auto traj_state_vars
         = std::make_shared<TrajectoryVariables>("traj_state_vars",
                                                 std::move(state_init),
@@ -341,31 +386,58 @@ int main(int argc, char ** argv)
         return jacCartpoleDynWrtControl(state, control, time, model);
     };
     const int num_constraints = 2 * state_len * num_segments;
-    nlp.AddConstraintSet(std::make_shared<HermSimpCollocationConstraints>(
+    const auto col_constraints
+        = std::make_shared<std::make_shared<HermSimpCollocationConstraints>(
         num_constraints,
-        traj_state_vars->GetName(),
+        traj_state_vars(),
         state_len,
-        traj_control_vars->GetName(),
+        traj_control_vars(),
         control_len,
-        traj_state_mid_vars->GetName(),    // midpoint states 
-        traj_control_mid_vars->GetName(),  // midpoint controls 
+        traj_state_mid_vars(),    // midpoint states 
+        traj_control_mid_vars(),  // midpoint controls 
         dt_segment,
         dyn_fn,
         jac_dyn_wrt_state_fn,
-        jac_dyn_wrt_control_fn));
+        jac_dyn_wrt_control_fn);
+    nlp.AddConstraintSet(col_constraints);
+    nlp.AddCostSet(std::make_shared<ControlEffortHermSimpCost>(
+        "effort_cost",
+        traj_control_vars->GetName(),
+        control_len,
+        dt_segment));
+    
+    nlp.PrintCurrent();
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "collocation constraint values:" << std::endl;
+    std::cout << col_constraints->GetValues().transpose() << std::endl;
+
     // nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>());
     // nlp.PrintCurrent();
 
     // choose solver and options
     ifopt::IpoptSolver ipopt;
-    ipopt.SetOption("tol", 3.82e-6);
+    ipopt.SetOption("tol", 1e-1);
+    ipopt.SetOption("max_iter", 3000);
+    ipopt.SetOption("max_cpu_time", 60.0);
+    // ipopt.SetOption("print_level", 5);
+    // ipopt.SetOption("print_frequency_time", 3.0);
+    ipopt.SetOption("derivative_test", "first-order");
     ipopt.SetOption("mu_strategy", "adaptive");
     ipopt.SetOption("output_file", "ipopt.out");
 
     // solve
     ipopt.Solve(nlp);
-    Eigen::VectorXd x = nlp.GetOptVariables()->GetValues();
-    std::cout << x.transpose() << std::endl;
+    nlp.PrintCurrent();
+
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "collocation constraint values:" << std::endl;
+    std::cout << col_constraints->GetValues().transpose() << std::endl;
 
     return 0;
 }
