@@ -53,6 +53,11 @@ RUN echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.asc] http://robot
 RUN apt-get update && apt-get install -qqy robotpkg-py3*-pinocchio
 
 ###################################################
+# install debug tools
+###################################################
+RUN apt-get update && apt-get install systemd-coredump gdb
+
+###################################################
 # create directory to be mapped
 ###################################################
 RUN mkdir /home/ubuntu/local_dir
