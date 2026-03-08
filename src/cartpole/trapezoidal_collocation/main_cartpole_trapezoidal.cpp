@@ -19,31 +19,33 @@ namespace pin = pinocchio;
  */
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
-                                             const double d,
-                                             const double d_max)
+                                             const double d_max,
+                                             const Eigen::VectorXd &state_start,
+                                             const Eigen::VectorXd &state_end)
 {
     // vector of bounds initally all zero
     ifopt::Component::VecBound bounds(num_state_vars);
     // for each state vector
-    for (size_t i{}; i < bounds.size(); i += state_len) {
+    const int num_state_vecs = num_state_vars / state_len;
+    for (size_t i{}; i < num_state_vecs; ++i) {
         if (i == 0) {
             // initial state bounds
             for (int j{}; j < state_len; ++j) {
-                bounds[i + j] = {0.0, 0.0};
+                bounds[i * state_len + j] = {state_start(j), state_start(j)};
             }
-        } else if (i == bounds.size() - 1) {
+        } else if (i == num_state_vecs - 1) {
             // final state bounds
-            bounds[i] = {d, d};
-            bounds[i + 1] = {std::numbers::pi, std::numbers::pi};
-            bounds[i + 2] = {0.0, 0.0};
-            bounds[i + 3] = {0.0, 0.0};
+            for (int j{}; j < state_len; ++j) {
+                bounds[i * state_len + j] = {state_end(j), state_end(j)};
+            }
         } else {
             // path bounds
 
             // bound for q0
-            bounds[i] = {-d_max, d_max};
+            bounds[i * state_len] = {-d_max, d_max};
             // bound for q1
-            bounds[i + 1] = {-2 * std::numbers::pi, 2 * std::numbers::pi};
+            bounds[i * state_len + 1]
+                = {-2 * std::numbers::pi, 2 * std::numbers::pi};
             // bound for dq0
             bounds[i + 2] = {-ifopt::inf, ifopt::inf};
             // bound for dq1
@@ -57,7 +59,8 @@ ifopt::Component::VecBound createControlBounds(const int num_control_vars,
                                                const double max_force)
 {
     // vector of bounds all
-    ifopt::Component::VecBound bounds(num_control_vars, {max_force, max_force});
+    ifopt::Component::VecBound bounds(num_control_vars,
+                                      {-max_force, max_force});
     return bounds;
 }
 
@@ -284,8 +287,14 @@ int main(int argc, char **argv)
     const double d_max = 2 * d;
     const int state_len = 4;
     const int num_state_vars = (num_segments + 1) * state_len;
-    ifopt::Component::VecBound state_bounds
-        = createStateBounds(num_state_vars, state_len, d, d_max);
+    const Eigen::VectorXd state_end{{d, std::numbers::pi, 0.0, 0.0}};
+    // const Eigen::VectorXd state_start = state_end;
+    const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
+    ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
+                                                                state_len,
+                                                                d_max,
+                                                                state_start,
+                                                                state_end);
 
     // init guess for state variables
     auto state_init = Eigen::VectorXd::Zero(num_state_vars);
