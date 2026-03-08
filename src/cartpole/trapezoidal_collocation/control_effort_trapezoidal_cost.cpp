@@ -1,6 +1,6 @@
-#include <cassert>
-
 #include "control_effort_trapezoidal_cost.hpp"
+
+#include <cassert>
 
 ControlEffortTrapezoidalCost::ControlEffortTrapezoidalCost(
     const std::string &cost_name,
@@ -57,12 +57,14 @@ void ControlEffortTrapezoidalCost::FillJacobianBlock(
                 if ((k == 0) || (k == num_vectors - 1)) {
                     // jacobian w.r.t elements of either first or last
                     // control vector
-                    triplets.push_back({0, k * m_ctrl_len + j, m_dt_segment});
+                    triplets.push_back(
+                        {0, k * m_ctrl_len + j, m_dt_segment * uk(j)});
                     continue;
                 }
                 // jacobian w.r.t elements of neither first or last control
                 // vector
-                triplets.push_back({0, k * m_ctrl_len + j, 2 * m_dt_segment});
+                triplets.push_back(
+                    {0, k * m_ctrl_len + j, 2 * m_dt_segment * uk(j)});
             }
         }
         jac.setFromTriplets(triplets.cbegin(), triplets.cend());
