@@ -51,6 +51,8 @@ public:
         const std::string &state_var_set_name,
         const int state_len,
         const std::string &control_var_set_name,
+        const std::string& state_mid_var_set_name,
+        const std::string& control_mid_var_set_name,
         const int control_len,
         const double dt_segment,
         const DynFn &dyn_fn,
@@ -61,13 +63,13 @@ public:
 
     ifopt::Component::VecBound GetBounds() const override
     {
-        // defects should all be zero
+        // HS constraint residuals should all be zero(this includes the midpoint)
         ifopt::Component::VecBound bounds(GetRows(), {0.0, 0.0});
         return bounds;
     }
 
     // Create the jacobian of the contraints w.r.t all of the optimization
-    // variables (state, control).
+    // variables (state, control, and midpoints).
     void FillJacobianBlock(
         std::string var_set,
         ifopt::Component::Jacobian &jac_block) const override;
@@ -76,7 +78,9 @@ private:
     enum class VariableType
     {
         STATE,
-        CONTROL
+        CONTROL,
+        STATE_MID,
+        CONTROL_MID
     };
 
     // Create the jacobian of the constraints w.r.t the specified variable
@@ -87,7 +91,7 @@ private:
     int getVarTypeLen(const VariableType var_type) const;
 
     // Create the jacobian of defect constraint vector k w.r.t the vector
-    // variable type (eg. state or control) at time point j.
+    // variable type (eg. state, control defects and state,control midpoints) at segment k ,knot point j
     ifopt::Component::Jacobian jacConstraintsWrtVar(
         const VariableType var_type,
         const size_t k,
@@ -118,6 +122,8 @@ private:
     const int m_state_len;
     const std::string m_control_var_set_name;
     const int m_control_len;
+    const std::string m_state_mid_var_set_name;
+    const std::string m_control_mid_var_set_name;
     const double m_dt_segment;
     const DynFn m_dyn_fn;
     const JacobianDynFn m_jac_dyn_wrt_state_fn;

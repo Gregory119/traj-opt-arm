@@ -53,6 +53,22 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
     return bounds;
 }
 
+ifopt::Component::VecBound createMidpointStateBounds(const int num_state_vars,
+                                                     const int state_len,
+                                                     const double d_max)
+{
+    ifopt::Component::VecBound bounds(num_state_vars);
+    for (size_t i{}; i < bounds.size(); i += state_len) {
+        // path bounds only 
+        // no pinned endpoints at midpoints
+        bounds[i]     = {-d_max, d_max};                          // q0
+        bounds[i + 1] = {-2 * std::numbers::pi, 2 * std::numbers::pi}; // q1
+        bounds[i + 2] = {-ifopt::inf, ifopt::inf};                // dq0
+        bounds[i + 3] = {-ifopt::inf, ifopt::inf};                // dq1
+    }
+    return bounds;
+}
+
 ifopt::Component::VecBound createControlBounds(const int num_control_vars,
                                                const double max_force)
 {
@@ -286,6 +302,28 @@ int main(int argc, char ** argv)
                                                 std::move(control_bounds));
     nlp.AddVariableSet(traj_control_vars);
 
+    // midpoint state variables
+    // one per segment
+    const int num_state_mid_vars = num_segments * state_len;
+    auto state_mid_bounds = createMidpointStateBounds(num_state_mid_vars, state_len, d_max);
+    auto state_mid_init = Eigen::VectorXd::Zero(num_state_mid_vars);
+    auto traj_state_mid_vars = std::make_shared<TrajectoryVariables>(
+        "traj_state_mid_vars",
+        std::move(state_mid_init),
+        std::move(state_mid_bounds));
+    nlp.AddVariableSet(traj_state_mid_vars);
+
+    // midpoint control variables
+    // one per segment
+    const int num_control_mid_vars = num_segments * control_len;
+    auto control_mid_bounds = createControlBounds(num_control_mid_vars, max_control_force);
+    auto control_mid_init = Eigen::VectorXd::Zero(num_control_mid_vars);
+    auto traj_control_mid_vars = std::make_shared<TrajectoryVariables>(
+        "traj_control_mid_vars",
+        std::move(control_mid_init),
+        std::move(control_mid_bounds));
+    nlp.AddVariableSet(traj_control_mid_vars);
+
     // add constraints
     const auto dyn_fn = [&](const Eigen::VectorXd &state,
                             const Eigen::VectorXd &control,
@@ -302,13 +340,15 @@ int main(int argc, char ** argv)
                                             const double time) {
         return jacCartpoleDynWrtControl(state, control, time, model);
     };
-    const int num_constraints = state_len * num_segments;
+    const int num_constraints = 2 * state_len * num_segments;
     nlp.AddConstraintSet(std::make_shared<HermSimpCollocationConstraints>(
         num_constraints,
         traj_state_vars->GetName(),
         state_len,
         traj_control_vars->GetName(),
         control_len,
+        traj_state_mid_vars->GetName(),    // midpoint states 
+        traj_control_mid_vars->GetName(),  // midpoint controls 
         dt_segment,
         dyn_fn,
         jac_dyn_wrt_state_fn,
