@@ -261,6 +261,23 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     return jac;
 }
 
+Eigen::VectorXd guessStateTraj(const int state_len,
+                               const int num_segments,
+                               const Eigen::VectorXd &state_start,
+                               const Eigen::VectorXd &state_end)
+{
+    const int num_time_pts = num_segments + 1;
+    Eigen::VectorXd ret = Eigen::VectorXd::Zero(num_time_pts * state_len);
+    // linearly interpolate from start state to end state
+    for (int k{}; k < num_time_pts; ++k) {
+        auto statek = ret(Eigen::seqN(k * state_len, state_len));
+        const double alpha
+            = k / (num_time_pts - 1);  // trajectory progress factor
+        statek = alpha * (state_end - state_start) + state_start;
+    }
+    return ret;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -297,7 +314,8 @@ int main(int argc, char **argv)
                                                                 state_end);
 
     // init guess for state variables
-    auto state_init = Eigen::VectorXd::Zero(num_state_vars);
+    auto state_init
+        = guessStateTraj(state_len, num_segments, state_start, state_end);
     auto traj_state_vars
         = std::make_shared<TrajectoryVariables>("traj_state_vars",
                                                 std::move(state_init),
