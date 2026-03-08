@@ -253,6 +253,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     triplets.reserve(state_len / 2);
     // fill da/dtau(0), which is the first column of da/dtau, where tau is the
     // generalized joint vector.
+    // std::cout << "ddq_dtau = \n" << ddq_dtau << std::endl;
     for (int i{}; i < state_len / 2; ++i) {
         triplets.push_back({i + state_len / 2, 0, ddq_dtau(i, 0)});
     }
@@ -354,33 +355,53 @@ int main(int argc, char **argv)
         return jacCartpoleDynWrtControl(state, control, time, model);
     };
     const int num_constraints = state_len * num_segments;
-    nlp.AddConstraintSet(std::make_shared<TrapezoidalCollocationConstraints>(
-        num_constraints,
-        traj_state_vars,
-        state_len,
-        traj_control_vars,
-        control_len,
-        dt_segment,
-        dyn_fn,
-        jac_dyn_wrt_state_fn,
-        jac_dyn_wrt_control_fn));
+    const auto col_constraints
+        = std::make_shared<TrapezoidalCollocationConstraints>(
+            num_constraints,
+            traj_state_vars,
+            state_len,
+            traj_control_vars,
+            control_len,
+            dt_segment,
+            dyn_fn,
+            jac_dyn_wrt_state_fn,
+            jac_dyn_wrt_control_fn);
+    nlp.AddConstraintSet(col_constraints);
     nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>(
         "effort_cost",
         traj_control_vars->GetName(),
         control_len,
         dt_segment));
+
     nlp.PrintCurrent();
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "collocation constraint values:" << std::endl;
+    std::cout << col_constraints->GetValues().transpose() << std::endl;
 
     // choose solver and options
     ifopt::IpoptSolver ipopt;
-    ipopt.SetOption("tol", 3.82e-6);
+    ipopt.SetOption("tol", 1e-1);
+    ipopt.SetOption("max_iter", 3000);
+    ipopt.SetOption("max_cpu_time", 60.0);
+    // ipopt.SetOption("print_level", 5);
+    // ipopt.SetOption("print_frequency_time", 3.0);
+    ipopt.SetOption("derivative_test", "first-order");
     ipopt.SetOption("mu_strategy", "adaptive");
     ipopt.SetOption("output_file", "ipopt.out");
 
     // solve
     ipopt.Solve(nlp);
-    Eigen::VectorXd x = nlp.GetOptVariables()->GetValues();
-    std::cout << x.transpose() << std::endl;
+    nlp.PrintCurrent();
+
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "collocation constraint values:" << std::endl;
+    std::cout << col_constraints->GetValues().transpose() << std::endl;
 
     return 0;
 }
