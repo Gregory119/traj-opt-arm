@@ -1,5 +1,7 @@
 #include "HermiteSimpson_collocation_constraints.hpp"
 
+#include <iostream>
+
 std::vector<Eigen::Triplet<double>> sparseMatrixToTriplets(
     const ifopt::Component::Jacobian &mat,
     const int row_start,
@@ -24,17 +26,17 @@ std::vector<Eigen::Triplet<double>> sparseMatrixToTriplets(
 
 HermSimpCollocationConstraints::HermSimpCollocationConstraints(
     const int num_constraints,
-    const std::string &state_var_set_name,
+    const std::shared_ptr<TrajectoryVariables> &state_vars,
     const int state_len,
-    const std::string &control_var_set_name,
+    const std::shared_ptr<TrajectoryVariables> &ctrl_vars,
+    const std::shared_ptr<TrajectoryVariables> &state_mid_vars,
+    const std::shared_ptr<TrajectoryVariables> &ctrl_mid_vars,
     const int control_len,
-    const std::string &state_mid_var_set_name,
-    const std::string &control_mid_var_set_name,
     const double dt_segment,
     const DynFn &dyn_fn,
     const JacobianDynFn &jac_dyn_wrt_state_fn,
     const JacobianDynFn &jac_dyn_wrt_control_fn)
-    : ConstraintSet(num_constraints, "trap_col_constraints")
+    : ConstraintSet(num_constraints, "HS_col_constraints")
     , m_state_var_set_name{state_var_set_name}
     , m_state_len{state_len}
     , m_control_var_set_name{control_var_set_name}
@@ -52,16 +54,12 @@ HermSimpCollocationConstraints::HermSimpCollocationConstraints(
 
 Eigen::VectorXd HermSimpCollocationConstraints::GetValues() const
 {
-    const Eigen::VectorXd state_vars
-        = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
-    const Eigen::VectorXd control_vars
-        = GetVariables()->GetComponent(m_control_var_set_name)->GetValues();
+    const Eigen::VectorXd state_vars = m_state_vars->GetValues();
+    const Eigen::VectorXd control_vars = m_ctrl_vars->GetValues();
 
-    //midpoints
-    const Eigen::VectorXd state_mid_vars 
-        = GetVariables()->GetComponent(m_state_mid_var_set_name)->GetValues();
-    const Eigen::VectorXd control_mid_vars 
-        = GetVariables()->GetComponent(m_control_mid_var_set_name)->GetValues();
+    // midpoints
+    const Eigen::VectorXd state_mid_vars = m_state_mid_vars->GetValues();
+    const Eigen::VectorXd control_mid_vars = m_ctrl_mid_vars->GetValues();
 
     assert(state_vars.size() % m_state_len == 0);
     assert(control_vars.size() % m_control_len == 0);
@@ -135,13 +133,13 @@ void HermSimpCollocationConstraints::FillJacobianBlock(
     std::string var_set,
     ifopt::Component::Jacobian &jac_block) const
 {
-    if (var_set == m_state_var_set_name) {
+    if (var_set == m_state_vars->GetName()) {
         FillJacobianWrt(VariableType::STATE, jac_block);
-    } else if (var_set == m_control_var_set_name) {
+    } else if (var_set == m_ctrl_vars->GetName()) {
         FillJacobianWrt(VariableType::CONTROL, jac_block);
-    } else if (var_set == m_state_mid_var_set_name) {
+    } else if (var_set == m_state_mid_vars->GetName()) {
         FillJacobianWrt(VariableType::STATE_MID, jac_block);
-    } else if (var_set == m_control_mid_var_set_name) {
+    } else if (var_set == m_ctrl_mid_vars->GetName()) {
         FillJacobianWrt(VariableType::CONTROL_MID, jac_block);
     }
 
@@ -167,15 +165,11 @@ void HermSimpCollocationConstraints::FillJacobianWrt(
     const VariableType var_type,
     ifopt::Component::Jacobian &jac_block) const
 {
-    const Eigen::VectorXd state_vars
-        = GetVariables()->GetComponent(m_state_var_set_name)->GetValues();
-    const Eigen::VectorXd control_vars
-        = GetVariables()->GetComponent(m_control_var_set_name)->GetValues();
+    const Eigen::VectorXd state_vars = m_state_vars->GetValues();
+    const Eigen::VectorXd control_vars = m_ctrl_vars->GetValues();
 
-    const Eigen::VectorXd state_mid_vars
-        = GetVariables()->GetComponent(m_state_mid_var_set_name)->GetValues();
-    const Eigen::VectorXd control_mid_vars
-        = GetVariables()->GetComponent(m_control_mid_var_set_name)->GetValues();
+    const Eigen::VectorXd state_mid_vars = m_state_mid_vars->GetValues();
+    const Eigen::VectorXd control_mid_vars = m_ctrl_mid_vars->GetValues();
 
     const double h = m_dt_segment; //will probably just rename m_dt_segment later
 
@@ -246,6 +240,7 @@ ifopt::Component::Jacobian
         const Eigen::VectorXd &control,
         const double time) const
 {
+    const double h = m_dt_segment;
     switch (var_type) {
         case VariableType::STATE:
             return jacConstraintsWrtState(k, j, state, control, time);
