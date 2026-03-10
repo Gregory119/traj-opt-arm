@@ -9,4 +9,5 @@ target_link_libraries(
   mujoco::mujoco
   glfw
   ipopt
+  traj_utils
 )
