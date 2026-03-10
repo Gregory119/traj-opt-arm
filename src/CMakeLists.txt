@@ -1,10 +1,3 @@
-cmake_minimum_required(VERSION 3.22)
-project(RobotArmTrajectoryOptimization VERSION 1.0 LANGUAGES CXX)
-
-# c++ standard
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # find libraries that should already be installed
 find_package(Threads REQUIRED)
 
@@ -33,6 +26,18 @@ target_include_directories(
 add_compile_definitions(HAVE_CSTDDEF)
 # --- IPOPT library added ---
 
+# --- manually add rapidcsv library ---
+include(FetchContent)
+
+# Fetch csv-parser and make it available to my-executable
+FetchContent_Declare(
+  rapidcsv
+  GIT_REPOSITORY https://github.com/d99kris/rapidcsv
+  GIT_SHALLOW TRUE 
+  GIT_TAG v8.92
+) 
+
+FetchContent_MakeAvailable(rapidcsv)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/trajectory_optimization)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
