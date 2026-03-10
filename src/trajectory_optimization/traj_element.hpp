@@ -6,7 +6,9 @@
 struct TrajElement
 {
     double time;
-    Eigen::VectorXd val;
+    Eigen::VectorXd q;
+    Eigen::VectorXd dq;
+    Eigen::VectorXd ddq;
 };
 
 using SampleTraj = std::deque<TrajElement>;

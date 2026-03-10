@@ -288,7 +288,7 @@ void Simulator::updateControl()
     // used for the control input.
     m_ctrl_traj.push_front(*e);
 
-    for (size_t i{}; i < e->val.size(); ++i) {
-        m_data->ctrl(i) = e->val(i);
+    for (size_t i{}; i < e->q.size(); ++i) {
+        m_data->ctrl[i] = e->q(i);
     }
 }

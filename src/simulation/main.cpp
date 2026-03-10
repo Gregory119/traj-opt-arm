@@ -5,8 +5,10 @@
 int main(int argc, const char **argv)
 {
     std::deque<TrajElement> traj{
-        {.time = 2.0, .val = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0}},
-        {.time = 3.0, .val = {1.0, -1.0, 0.0, 0.0, 0.0, 0.0}},
+        {.time = 2.0,
+         .q = (Eigen::VectorXd(6) << 1.0, 0.0, 0.0, 0.0, 0.0, 0.0).finished()},
+        {.time = 3.0,
+         .q = (Eigen::VectorXd(6) << 1.0, -1.0, 0.0, 0.0, 0.0, 0.0).finished()},
     };
     Simulator::getInstance()->setTrajectory(std::move(traj));
     Simulator::getInstance()->run();
