@@ -20,7 +20,7 @@ public:
                     const double duration);
 
     // Get the value of the spline at a particular time.
-    Eigen::VectorXd getValue(const double time);
+    Eigen::VectorXd getValue(const double time) const;
 
 private:
     const std::vector<Eigen::VectorXd> m_func_vals;

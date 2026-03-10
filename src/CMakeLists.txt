@@ -8,7 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # find libraries that should already be installed
 find_package(Threads REQUIRED)
 
-find_package(ifopt)
+find_package(ifopt REQUIRED)
+find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(pinocchio REQUIRED)
 
 # --- manually add IPOPT as a library ---

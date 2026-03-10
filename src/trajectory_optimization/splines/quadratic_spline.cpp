@@ -12,32 +12,31 @@ QuadraticSpline::QuadraticSpline(std::vector<Eigen::VectorXd> func_vals,
     , m_start_time{start_time}
     , m_duration{duration}
 {
-    if (times.empty()) {
-        throw std::invalid_argument("QuadraticSpline. empty times.");
+    if (func_vals.empty()) {
+        throw std::invalid_argument("QuadraticSpline. empty values.");
     }
     assert(func_vals.size() == grad_vals.size());
-    assert(func_vals.size() == times.size());
 }
 
-Eigen::VectorXd QuadraticSpline::getValue(const double time)
+Eigen::VectorXd QuadraticSpline::getValue(const double time) const
 {
     // check time bounds
     const double end_time = m_start_time + m_duration;
     if ((time < m_start_time) || (time > end_time)) {
         std::ostringstream os;
         os << "QuadraticSpline. time out of bounds. time: " << time
-           << ", start time: " << m_start_time << ", end time: " << m_end_time;
+           << ", start time: " << m_start_time << ", end time: " << end_time;
         throw std::invalid_argument(os.str());
     }
 
     // Get the index to the start time of the segment.
-    const int num_segments = func_vals.size() - 1;
+    const int num_segments = m_func_vals.size() - 1;
     const double alpha = (time - m_start_time) / m_duration;
     const int i_start = static_cast<int>(alpha * num_segments);
 
     // if at end, then return last value
     if (i_start == num_segments) {
-        return func_vals(i_start);
+        return m_func_vals[i_start];
     }
 
     // get start time
@@ -48,9 +47,9 @@ Eigen::VectorXd QuadraticSpline::getValue(const double time)
     const double dt = time - ti;
 
     // quadratic polynomial interpolation
-    return interp_quad(func_vals(i_start),      // xi
-                       grad_vals(i_start),      // dxi
-                       grad_vals(i_start + 1),  // dxf
+    return interp_quad(m_func_vals[i_start],      // xi
+                       m_grad_vals[i_start],      // dxi
+                       m_grad_vals[i_start + 1],  // dxf
                        dt_max,
                        dt);
 }
