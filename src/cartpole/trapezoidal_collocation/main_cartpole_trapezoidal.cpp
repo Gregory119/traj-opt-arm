@@ -1,4 +1,5 @@
 #include <iostream>
+#include <linear_spline.hpp>
 #include <numbers>
 #include <quadratic_spline.hpp>
 #include <traj_element.hpp>
@@ -282,7 +283,7 @@ Eigen::VectorXd guessStateTraj(const int state_len,
     return ret;
 }
 
-Eigen::VectorXd createStateGradVarsWrtTime(
+Eigen::VectorXd createStateGradTimeVars(
     const double start_time,
     const Eigen::VectorXd &traj_state_vars,
     const int state_len,
@@ -306,6 +307,65 @@ Eigen::VectorXd createStateGradVarsWrtTime(
     return traj_dstate_dt_vars;
 }
 
+QuadraticSpline createStateSpline(const double start_time,
+                                  const double traj_dur,
+                                  const Eigen::VectorXd &traj_state_vars,
+                                  const int state_len,
+                                  const Eigen::VectorXd &traj_dstate_dt_vars)
+{
+    std::vector<Eigen::VectorXd> state_vals;
+    std::vector<Eigen::VectorXd> state_grad_vals;
+    const int num_state_vecs = traj_state_vars.size() / state_len;
+    for (int i{}; i < num_state_vecs; ++i) {
+        const Eigen::VectorXd state
+            = traj_state_vars(Eigen::seqN(i * state_len, state_len));
+        const Eigen::VectorXd dstate_dt
+            = traj_dstate_dt_vars(Eigen::seqN(i * state_len, state_len));
+        state_vals.push_back(state);
+        state_grad_vals.push_back(dstate_dt);
+    }
+
+    return QuadraticSpline(state_vals, state_grad_vals, start_time, traj_dur);
+}
+
+LinearSpline createStateGradTimeSpline(
+    const double start_time,
+    const double traj_dur,
+    const Eigen::VectorXd &traj_dstate_dt_vars,
+    const int state_len)
+{
+    std::vector<Eigen::VectorXd> state_grad_vals;
+    const int num_state_vecs = traj_dstate_dt_vars.size() / state_len;
+    for (int i{}; i < num_state_vecs; ++i) {
+        const Eigen::VectorXd dstate_dt
+            = traj_dstate_dt_vars(Eigen::seqN(i * state_len, state_len));
+        state_grad_vals.push_back(dstate_dt);
+    }
+    return LinearSpline(state_grad_vals, start_time, traj_dur);
+}
+
+// create sample trajectory
+SampleTraj createSampleTraj(const double start_time,
+                            const double sample_period,
+                            const double traj_dur,
+                            const QuadraticSpline &state_spline,
+                            const LinearSpline &dstate_dt_spline)
+{
+    SampleTraj sample_traj;
+    const int num_samples = static_cast<int>(traj_dur / sample_period) + 1;
+    for (int i{}; i < num_samples; ++i) {
+        const double time = i * sample_period + start_time;
+        const Eigen::VectorXd state = state_spline.getValue(time);
+        const Eigen::VectorXd dstate_dt = dstate_dt_spline.getValue(time);
+        sample_traj.push_back(
+            {.time = time,
+             .q = state(Eigen::seqN(0, state.size() / 2)),
+             .dq = state(Eigen::seqN(state.size() / 2, state.size() / 2)),
+             .ddq
+             = dstate_dt(Eigen::seqN(state.size() / 2, state.size() / 2))});
+    }
+    return sample_traj;
+}
 
 // save sample trajectory to file
 void saveSampleTrajCsv(const std::string &filename,
@@ -342,14 +402,12 @@ void saveSampleTrajCsv(const std::string &filename,
 
 SampleTraj createCollocationTraj(const double start_time,
                                  const double dt_segment,
-                                 const int num_segments,
                                  const Eigen::VectorXd &traj_state_vars,
                                  const int state_len,
                                  const Eigen::VectorXd &traj_dstate_dt_vars)
 {
     SampleTraj traj;
-    // add 1 for the end sample point
-    const int num_samples = num_segments + 1;
+    const int num_samples = traj_state_vars.size() / state_len;
     for (int i{}; i < num_samples; ++i) {
         const double time = i * dt_segment + start_time;
         const Eigen::VectorXd state
@@ -380,9 +438,9 @@ int main(int argc, char **argv)
 
     // define problem
     ifopt::Problem nlp;
-    const double start_time_coll = 0.0;
+    const double start_time = 0.0;
     const double traj_dur = 2.0;
-    const int num_segments = 10;
+    const int num_segments = 4;
     const double dt_segment = traj_dur / num_segments;
 
     // final q0 position
@@ -494,17 +552,16 @@ int main(int argc, char **argv)
     // Save solution to file
     //////////////////////////////////////////////////////////////////////
     const Eigen::VectorXd traj_dstate_dt_vars
-        = createStateGradVarsWrtTime(start_time_coll,
-                                     traj_state_vars->GetValues(),
-                                     state_len,
-                                     traj_control_vars->GetValues(),
-                                     control_len,
-                                     dt_segment,
-                                     model);
+        = createStateGradTimeVars(start_time,
+                                  traj_state_vars->GetValues(),
+                                  state_len,
+                                  traj_control_vars->GetValues(),
+                                  control_len,
+                                  dt_segment,
+                                  model);
     const SampleTraj coll_traj
-        = createCollocationTraj(start_time_coll,
+        = createCollocationTraj(start_time,
                                 dt_segment,
-                                num_segments,
                                 traj_state_vars->GetValues(),
                                 state_len,
                                 traj_dstate_dt_vars);
@@ -512,34 +569,32 @@ int main(int argc, char **argv)
     saveSampleTrajCsv("nlp-solution-trapezoidal-cartpole.csv", coll_traj);
 
     ///////////////////////////////////////////////////////////////////////
-    // Create spline and sample trajectory
+    // Create spline and sample trajectory and save to file
     //////////////////////////////////////////////////////////////////////
     // create quadratic spline
-    const double start_time = 0.0;
-    std::vector<Eigen::VectorXd> state_vals;
-    std::vector<Eigen::VectorXd> state_grad_vals;
-    const int num_state_vecs = num_state_vars / state_len;
-    for (int i{}; i < num_state_vecs; ++i) {
-        const Eigen::VectorXd state
-            = traj_state_vars.GetValues()(Eigen::seq(i * state_len, state_len));
-        const Eigen::VectorXd control = traj_control_vars.GetValues()(
-            Eigen::seq(i * state_len, state_len));
-        const double time = i * dt_segment;
+    const QuadraticSpline state_spline
+        = createStateSpline(start_time,
+                            traj_dur,
+                            traj_state_vars->GetValues(),
+                            state_len,
+                            traj_dstate_dt_vars);
 
-        state_vals.push_back(state);
-        state_grad_vals.push_back(cartpoleDyn(state, control, time, model));
-    }
-    QuadraticSpline qspline(state_vals, state_grad_vals, start_time, traj_dur);
+    const LinearSpline dstate_dt_spline
+        = createStateGradTimeSpline(start_time,
+                                    traj_dur,
+                                    traj_dstate_dt_vars,
+                                    state_len);
 
     // create sample trajectory
-    SampleTraj sample_traj;
     const double sample_period = 0.020;
-    const int num_samples = static_cast<int>(traj_dur / sample_period);
-    for (int i{}; i<num_samples, ++i) {
-        const double time = i * sample_period + start_time;
-        sample_traj.push_back({.time = time, .val = qspline.getValue(time)});
-    }
+    const SampleTraj sample_traj = createSampleTraj(start_time,
+                                                    sample_period,
+                                                    traj_dur,
+                                                    state_spline,
+                                                    dstate_dt_spline);
 
     // save sample trajectory to file
+    saveSampleTrajCsv("sample-traj-trapezoidal-cartpole.csv", sample_traj);
+
     return 0;
 }
