@@ -1,5 +1,7 @@
 #include <iostream>
 #include <numbers>
+#include <quadratic_spline.hpp>
+#include <traj_element.hpp>
 
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
@@ -403,5 +405,39 @@ int main(int argc, char **argv)
     std::cout << "collocation constraint values:" << std::endl;
     std::cout << col_constraints->GetValues().transpose() << std::endl;
 
+    ///////////////////////////////////////////////////////////////////////
+    // Save solution to file
+    //////////////////////////////////////////////////////////////////////
+
+    ///////////////////////////////////////////////////////////////////////
+    // Create spline and sample trajectory
+    //////////////////////////////////////////////////////////////////////
+    // create quadratic spline
+    const double start_time = 0.0;
+    std::vector<Eigen::VectorXd> state_vals;
+    std::vector<Eigen::VectorXd> state_grad_vals;
+    const int num_state_vecs = num_state_vars / state_len;
+    for (int i{}; i < num_state_vecs; ++i) {
+        const Eigen::VectorXd state
+            = traj_state_vars.GetValues()(Eigen::seq(i * state_len, state_len));
+        const Eigen::VectorXd control = traj_control_vars.GetValues()(
+            Eigen::seq(i * state_len, state_len));
+        const double time = i * dt_segment;
+
+        state_vals.push_back(state);
+        state_grad_vals.push_back(cartpoleDyn(state, control, time, model));
+    }
+    QuadraticSpline qspline(state_vals, state_grad_vals, start_time, traj_dur);
+
+    // create sample trajectory
+    SampleTraj sample_traj;
+    const double sample_period = 0.020;
+    const int num_samples = static_cast<int>(traj_dur / sample_period);
+    for (int i{}; i<num_samples, ++i) {
+        const double time = i * sample_period + start_time;
+        sample_traj.push_back({.time = time, .val = qspline.getValue(time)});
+    }
+
+    // save sample trajectory to file
     return 0;
 }
