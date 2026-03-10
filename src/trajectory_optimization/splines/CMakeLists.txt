@@ -1,5 +1,5 @@
 # Define the static library target
-add_library(splines STATIC quadratic_spline.cpp)
+add_library(splines STATIC quadratic_spline.cpp linear_spline.cpp)
 target_link_libraries(splines PUBLIC Eigen3::Eigen)
 # Include header files that will be publically available to the target that
 # links to this library.
