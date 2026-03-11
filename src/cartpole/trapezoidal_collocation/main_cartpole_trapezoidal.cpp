@@ -441,7 +441,7 @@ int main(int argc, char **argv)
     ifopt::Problem nlp;
     const double start_time = 0.0;
     const double traj_dur = 2.0;
-    const int num_segments = 4;
+    const int num_segments = 10;
     const double dt_segment = traj_dur / num_segments;
 
     // final q0 position
@@ -452,7 +452,7 @@ int main(int argc, char **argv)
     const int state_len = 4;
     const int num_state_vars = (num_segments + 1) * state_len;
     const Eigen::VectorXd state_end{{d, std::numbers::pi, 0.0, 0.0}};
-    // const Eigen::VectorXd state_start = state_end;
+    // const Eigen::VectorXd state_start{{d, std::numbers::pi, 0.0, 0.0}};
     const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
     ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
                                                                 state_len,
