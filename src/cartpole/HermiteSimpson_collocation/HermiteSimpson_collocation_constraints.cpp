@@ -37,12 +37,12 @@ HermSimpCollocationConstraints::HermSimpCollocationConstraints(
     const JacobianDynFn &jac_dyn_wrt_state_fn,
     const JacobianDynFn &jac_dyn_wrt_control_fn)
     : ConstraintSet(num_constraints, "HS_col_constraints")
-    , m_state_var_set_name{state_var_set_name}
+    , m_state_vars{state_vars}
     , m_state_len{state_len}
-    , m_control_var_set_name{control_var_set_name}
+    , m_ctrl_vars{ctrl_vars}
     , m_control_len{control_len}
-    , m_state_mid_var_set_name{state_mid_var_set_name}
-    , m_control_mid_var_set_name{control_mid_var_set_name}
+    , m_state_mid_vars{state_mid_vars}
+    , m_ctrl_mid_vars{ctrl_mid_vars}
     , m_dt_segment{dt_segment}
     , m_dyn_fn{dyn_fn}
     , m_jac_dyn_wrt_state_fn{jac_dyn_wrt_state_fn}

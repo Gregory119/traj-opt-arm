@@ -19,6 +19,7 @@ namespace pin = pinocchio;
  */
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
+                                             double d_max,
                                              const Eigen::VectorXd &state_start,
                                              const Eigen::VectorXd &state_end)
 {
@@ -405,7 +406,7 @@ int main(int argc, char **argv)
         traj_control_vars->GetName(),
         control_len,
         dt_segment));
-    
+
     nlp.PrintCurrent();
     std::cout << "state variables: " << std::endl;
     std::cout << traj_state_vars->GetValues().transpose() << std::endl;

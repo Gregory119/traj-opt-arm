@@ -2,11 +2,11 @@
 
 #include <ifopt/cost_term.h>
 
-class ControlEffortTrapezoidalCost : public ifopt::CostTerm
+class ControlEffortHermSimpCost : public ifopt::CostTerm
 {
 public:
-    ControlEffortTrapezoidalCost(const std::string &cost_name,
-                                 const std::string &ctrl_vars_name,
+    ControlEffortHermSimpCost(const std::string &cost_name,
+                                 const std::string &ctrl_vars,
                                  const int ctrl_len,
                                  const double dt_segment);
 
@@ -15,7 +15,7 @@ public:
     void FillJacobianBlock(std::string var_set,
                            ifopt::Component::Jacobian &jac) const override;
 private:
-    const std::string m_ctrl_vars_name;
+    const std::string m_ctrl_vars;
     const int m_ctrl_len;
     const double m_dt_segment;
 };
