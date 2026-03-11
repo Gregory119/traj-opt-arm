@@ -34,7 +34,7 @@ Simulator::Simulator(const std::string &model_path,
     }
 
     // load and compile model
-    char error [1000] = "Could not load binary model";
+    char error[1000] = "Could not load binary model";
     // load mjb file
     if ((model_path.size() > 4)
         && (model_path.substr(model_path.size() - 4) == ".mjb")) {
@@ -74,7 +74,7 @@ Simulator::~Simulator()
 #endif
 }
 
-void Simulator::setTrajectory(std::deque<TrajElement> ctrl_traj)
+void Simulator::setTrajectory(SampleTraj ctrl_traj)
 {
     // todo: validate size of state
     m_ctrl_traj_orig = std::move(ctrl_traj);
@@ -288,7 +288,7 @@ void Simulator::updateControl()
     // used for the control input.
     m_ctrl_traj.push_front(*e);
 
-    for (size_t i{}; i < e->val.size(); ++i) {
-        m_data->ctrl [i] = e->val [i];
+    for (size_t i{}; i < e->q.size(); ++i) {
+        m_data->ctrl[i] = e->q(i);
     }
 }
