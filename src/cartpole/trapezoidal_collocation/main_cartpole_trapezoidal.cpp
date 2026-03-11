@@ -277,7 +277,8 @@ Eigen::VectorXd guessStateTraj(const int state_len,
     for (int k{}; k < num_time_pts; ++k) {
         auto statek = ret(Eigen::seqN(k * state_len, state_len));
         const double alpha
-            = k / (num_time_pts - 1);  // trajectory progress factor
+            = static_cast<double>(k)
+              / (num_time_pts - 1);  // trajectory progress factor
         statek = alpha * (state_end - state_start) + state_start;
     }
     return ret;
@@ -471,7 +472,7 @@ int main(int argc, char **argv)
     // control bounds
     const int control_len = 1;
     const int num_control_vars = control_len * (num_segments + 1);
-    const double max_control_force = 50;
+    const double max_control_force = 100.0;
     ifopt::Component::VecBound control_bounds
         = createControlBounds(num_control_vars, max_control_force);
 
@@ -528,7 +529,7 @@ int main(int argc, char **argv)
 
     // choose solver and options
     ifopt::IpoptSolver ipopt;
-    ipopt.SetOption("tol", 1e-1);
+    ipopt.SetOption("tol", 1e-3);
     ipopt.SetOption("max_iter", 3000);
     ipopt.SetOption("max_cpu_time", 60.0);
     // ipopt.SetOption("print_level", 5);
