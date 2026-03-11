@@ -9,17 +9,12 @@
 #include <optional>
 #include <sstream>
 #include <thread>
+#include <traj_element.hpp>
 
 #include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
 #include "periodic_sim_timer.hpp"
-
-struct TrajElement
-{
-    double time;
-    std::vector<double> val;
-};
 
 class Simulator final
 {
@@ -28,7 +23,7 @@ public:
 
     ~Simulator();
 
-    void setTrajectory(std::deque<TrajElement> ctrl_traj);
+    void setTrajectory(SampleTraj ctrl_traj);
 
     void run();
 
@@ -89,7 +84,7 @@ private:
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
     // keep a copy of the original trajectory to enable resetting the simulation
-    std::deque<TrajElement> m_ctrl_traj_orig;
+    SampleTraj m_ctrl_traj_orig;
     // actual control trajectory that gets popped during sim
-    std::deque<TrajElement> m_ctrl_traj;
+    SampleTraj m_ctrl_traj;
 };

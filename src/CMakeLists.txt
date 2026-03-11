@@ -1,16 +1,8 @@
-cmake_minimum_required(VERSION 3.22)
-project(RobotArmTrajectoryOptimization VERSION 1.0 LANGUAGES CXX)
-
-# c++ standard
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # find libraries that should already be installed
-find_package(mujoco REQUIRED)
-find_package(glfw3 REQUIRED)
 find_package(Threads REQUIRED)
 
-find_package(ifopt)
+find_package(ifopt REQUIRED)
+find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(pinocchio REQUIRED)
 
 # --- manually add IPOPT as a library ---
@@ -34,28 +26,22 @@ target_include_directories(
 add_compile_definitions(HAVE_CSTDDEF)
 # --- IPOPT library added ---
 
+# --- manually add rapidcsv library ---
+include(FetchContent)
 
-#######################################################################
-# Executeables
-#######################################################################
-add_executable(traj_opt_arm main.cpp simulator.cpp periodic_sim_timer.cpp )
-target_include_directories(traj_opt_arm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} )
-target_link_libraries(
-  traj_opt_arm
-  mujoco::mujoco
-  glfw
-  ipopt
-)
+# Fetch csv-parser and make it available to my-executable
+FetchContent_Declare(
+  rapidcsv
+  GIT_REPOSITORY https://github.com/d99kris/rapidcsv
+  GIT_SHALLOW TRUE 
+  GIT_TAG v8.92
+) 
 
+FetchContent_MakeAvailable(rapidcsv)
 
-
-
-# If your application uses windowing (e.g., for a viewer using GLFW), 
-# you may need to find and link additional libraries like OpenGL and GLFW.
-# find_package(OpenGL REQUIRED)
-# target_link_libraries(my_app PUBLIC OpenGL::OpenGL glfw)
-
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/trajectory_optimization)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/hardware)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/simulation)
