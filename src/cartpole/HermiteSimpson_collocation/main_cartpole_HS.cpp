@@ -1,8 +1,15 @@
 #include <iostream>
 #include <numbers>
 
+
+#include <linear_spline.hpp>
+#include <quadratic_spline.hpp>
+#include <traj_element.hpp>
+
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
+#include <rapidcsv.h>
+
 
 #include "control_effort_HS_cost.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
@@ -17,6 +24,7 @@ namespace pin = pinocchio;
  * @param d Final position of the cart.
  * @param d_max Maximum position of the cart at any time along the trajectory.
  */
+
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
                                              double d_max,
@@ -24,34 +32,34 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const Eigen::VectorXd &state_end)
 {
     // vector of bounds initally all zero
-    ifopt::Component::VecBound bounds(num_state_vars);
+    ifopt::Component::VecBound bounds;
     // for each state vector
     const int num_state_vecs = num_state_vars / state_len;
-    for (size_t i{}; i < num_state_vecs; ++i) {
+    for (int i{}; i < num_state_vecs; ++i) {
         if (i == 0) {
             // initial state bounds
             for (int j{}; j < state_len; ++j) {
-                bounds[i * state_len + j] = {state_start(j), state_start(j)};
+                bounds.push_back({state_start(j), state_start(j)});
             }
         } else if (i == num_state_vecs - 1) {
             // final state bounds
             for (int j{}; j < state_len; ++j) {
-                bounds[i * state_len + j] = {state_end(j), state_end(j)};
+                bounds.push_back({state_end(j), state_end(j)});
             }
         } else {
             // path bounds
 
             // bound for q0
-            bounds[i * state_len] = {-d_max, d_max};
+            bounds.push_back({-d_max, d_max});
             // bound for q1
-            bounds[i * state_len + 1]
-                = {-2 * std::numbers::pi, 2 * std::numbers::pi};
+            bounds.push_back({-2 * std::numbers::pi, 2 * std::numbers::pi});
             // bound for dq0
-            bounds[i + 2] = {-ifopt::inf, ifopt::inf};
+            bounds.push_back({-ifopt::inf, ifopt::inf});
             // bound for dq1
-            bounds[i + 3] = {-ifopt::inf, ifopt::inf};
+            bounds.push_back({-ifopt::inf, ifopt::inf});
         }
     }
+    assert(bounds.size() == num_state_vars);    
     return bounds;
 }
 
@@ -60,13 +68,13 @@ ifopt::Component::VecBound createMidpointStateBounds(const int num_state_vars,
                                                      const double d_max)
 {
     ifopt::Component::VecBound bounds(num_state_vars);
-    for (size_t i{}; i < bounds.size(); i += state_len) {
+    for (int i{}; i < bounds.size(); i += state_len) {
         // path bounds only 
         // no pinned endpoints at midpoints
-        bounds[i]     = {-d_max, d_max};                          // q0
-        bounds[i + 1] = {-2 * std::numbers::pi, 2 * std::numbers::pi}; // q1
-        bounds[i + 2] = {-ifopt::inf, ifopt::inf};                // dq0
-        bounds[i + 3] = {-ifopt::inf, ifopt::inf};                // dq1
+        bounds.push_back ({-d_max, d_max});                          // q0
+        bounds.push_back ({-2 * std::numbers::pi, 2 * std::numbers::pi}); // q1
+        bounds.push_back ({-ifopt::inf, ifopt::inf});                // dq0
+        bounds.push_back ({-ifopt::inf, ifopt::inf});                // dq1
     }
     return bounds;
 }
@@ -283,7 +291,8 @@ Eigen::VectorXd guessStateTraj(const int state_len,
     for (int k{}; k < num_time_pts; ++k) {
         auto statek = ret(Eigen::seqN(k * state_len, state_len));
         const double alpha
-            = k / (num_time_pts - 1);  // trajectory progress factor
+              = static_cast<double>(k)
+              / (num_time_pts - 1);  // trajectory progress factor
         statek = alpha * (state_end - state_start) + state_start;
     }
     return ret;
@@ -316,7 +325,7 @@ int main(int argc, char **argv)
     const int state_len = 4;
     const int num_state_vars = (num_segments + 1) * state_len;
     const Eigen::VectorXd state_end{{d, std::numbers::pi, 0.0, 0.0}};
-    // const Eigen::VectorXd state_start = state_end;
+    // const Eigen::VectorXd state_start{{d, std::numbers::pi, 0.0, 0.0}};
     const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
     ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
                                                                 state_len,
@@ -336,7 +345,7 @@ int main(int argc, char **argv)
     // control bounds
     const int control_len = 1;
     const int num_control_vars = control_len * (num_segments + 1);
-    const double max_control_force = 50;
+    const double max_control_force = 100;
     ifopt::Component::VecBound control_bounds
         = createControlBounds(num_control_vars, max_control_force);
 
@@ -388,14 +397,14 @@ int main(int argc, char **argv)
     };
     const int num_constraints = 2 * state_len * num_segments;
     const auto col_constraints
-        = std::make_shared<std::make_shared<HermSimpCollocationConstraints>(
+        = std::make_shared<HermSimpCollocationConstraints>(
         num_constraints,
-        traj_state_vars(),
+        traj_state_vars,
         state_len,
-        traj_control_vars(),
+        traj_control_vars,
+        traj_state_mid_vars,    // midpoint states 
+        traj_control_mid_vars,  // midpoint controls 
         control_len,
-        traj_state_mid_vars(),    // midpoint states 
-        traj_control_mid_vars(),  // midpoint controls 
         dt_segment,
         dyn_fn,
         jac_dyn_wrt_state_fn,
@@ -420,7 +429,7 @@ int main(int argc, char **argv)
 
     // choose solver and options
     ifopt::IpoptSolver ipopt;
-    ipopt.SetOption("tol", 1e-1);
+    ipopt.SetOption("tol", 1e-3);
     ipopt.SetOption("max_iter", 3000);
     ipopt.SetOption("max_cpu_time", 60.0);
     // ipopt.SetOption("print_level", 5);

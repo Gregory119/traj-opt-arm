@@ -4,11 +4,11 @@
 
 ControlEffortHermSimpCost::ControlEffortHermSimpCost(
     const std::string &cost_name,
-    const std::string &ctrl_vars,
+    const std::string &ctrl_vars_name,
     const int ctrl_len,
     const double dt_segment)
     : CostTerm(cost_name)
-    , m_ctrl_vars{ctrl_vars}
+    , m_ctrl_vars_name{ctrl_vars_name}
     , m_ctrl_len{ctrl_len}
     , m_dt_segment{dt_segment}
 {}
@@ -16,7 +16,7 @@ ControlEffortHermSimpCost::ControlEffortHermSimpCost(
 double ControlEffortHermSimpCost::GetCost() const
 {
     const Eigen::VectorXd ctrl_vars
-        = GetVariables()->GetComponent(m_ctrl_vars)->GetValues();
+        = GetVariables()->GetComponent(m_ctrl_vars_name)->GetValues();
     assert(ctrl_vars.size() % m_ctrl_len == 0);
     const int num_vectors = ctrl_vars.size() / m_ctrl_len;
 
@@ -42,10 +42,10 @@ void ControlEffortHermSimpCost::FillJacobianBlock(
     std::string var_set,
     ifopt::Component::Jacobian &jac) const
 {
-    if (var_set == m_ctrl_vars) {
+    if (var_set == m_ctrl_vars_name) {
         // loop through each control vector
         const VectorXd ctrl_vars
-            = GetVariables()->GetComponent(m_ctrl_vars)->GetValues();
+            = GetVariables()->GetComponent(m_ctrl_vars_name)->GetValues();
         assert(ctrl_vars.size() % m_ctrl_len == 0);
         const int num_vectors = ctrl_vars.size() / m_ctrl_len;
 
