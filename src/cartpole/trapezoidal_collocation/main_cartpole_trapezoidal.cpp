@@ -390,7 +390,7 @@ void saveDiscreteJointStateTrajCsv(const std::string &filename,
     // fill in data in rows
     for (int i{}; i < sample_traj.size(); ++i) {
         std::vector<double> row_data;
-        const TrajElement &e = sample_traj.at(i);
+        const JointState &e = sample_traj.at(i);
         row_data.push_back(e.time);
         row_data.insert(row_data.cend(), e.q.cbegin(), e.q.cend());
         row_data.insert(row_data.cend(), e.dq.cbegin(), e.dq.cend());

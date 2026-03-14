@@ -271,7 +271,7 @@ void Simulator::updateControl()
     // std::cout << "updateControl() time: " << m_data->time << std::endl;
 
     // get the last control input up to the current time
-    std::optional<TrajElement> e;
+    std::optional<JointState> e;
     while (!m_ctrl_traj.empty() && (m_ctrl_traj.front().time < m_data->time)) {
         e = m_ctrl_traj.front();
         m_ctrl_traj.pop_front();
