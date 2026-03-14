@@ -284,16 +284,15 @@ Eigen::VectorXd guessStateTraj(const int state_len,
     return ret;
 }
 
-Eigen::VectorXd createStateGradTimeVars(
-    const double start_time,
-    const Eigen::VectorXd &traj_state_vars,
-    const int state_len,
-    const Eigen::VectorXd &traj_control_vars,
-    const int control_len,
-    const double dt_segment,
-    const pin::Model &model)
+Eigen::VectorXd createDynVals(const double start_time,
+                              const Eigen::VectorXd &traj_state_vars,
+                              const int state_len,
+                              const Eigen::VectorXd &traj_control_vars,
+                              const int control_len,
+                              const double dt_segment,
+                              const pin::Model &model)
 {
-    Eigen::VectorXd traj_dstate_dt_vars
+    Eigen::VectorXd traj_dyn_vals
         = Eigen::VectorXd::Zero(traj_state_vars.size());
     const int num_state_vecs = traj_state_vars.size() / state_len;
     for (int i{}; i < num_state_vecs; ++i) {
@@ -302,17 +301,17 @@ Eigen::VectorXd createStateGradTimeVars(
         const Eigen::VectorXd control
             = traj_control_vars(Eigen::seqN(i * control_len, control_len));
         const double time = i * dt_segment;
-        traj_dstate_dt_vars(Eigen::seqN(i * state_len, state_len))
+        traj_dyn_vals(Eigen::seqN(i * state_len, state_len))
             = cartpoleDyn(state, control, time, model);
     }
-    return traj_dstate_dt_vars;
+    return traj_dyn_vals;
 }
 
 QuadraticSpline createStateSpline(const double start_time,
                                   const double traj_dur,
                                   const Eigen::VectorXd &traj_state_vars,
                                   const int state_len,
-                                  const Eigen::VectorXd &traj_dstate_dt_vars)
+                                  const Eigen::VectorXd &traj_dyn_vals)
 {
     std::vector<Eigen::VectorXd> state_vals;
     std::vector<Eigen::VectorXd> state_grad_vals;
@@ -321,7 +320,7 @@ QuadraticSpline createStateSpline(const double start_time,
         const Eigen::VectorXd state
             = traj_state_vars(Eigen::seqN(i * state_len, state_len));
         const Eigen::VectorXd dstate_dt
-            = traj_dstate_dt_vars(Eigen::seqN(i * state_len, state_len));
+            = traj_dyn_vals(Eigen::seqN(i * state_len, state_len));
         state_vals.push_back(state);
         state_grad_vals.push_back(dstate_dt);
     }
@@ -329,17 +328,16 @@ QuadraticSpline createStateSpline(const double start_time,
     return QuadraticSpline(state_vals, state_grad_vals, start_time, traj_dur);
 }
 
-LinearSpline createStateGradTimeSpline(
-    const double start_time,
-    const double traj_dur,
-    const Eigen::VectorXd &traj_dstate_dt_vars,
-    const int state_len)
+LinearSpline createDynSpline(const double start_time,
+                             const double traj_dur,
+                             const Eigen::VectorXd &traj_dyn_vals,
+                             const int state_len)
 {
     std::vector<Eigen::VectorXd> state_grad_vals;
-    const int num_state_vecs = traj_dstate_dt_vars.size() / state_len;
+    const int num_state_vecs = traj_dyn_vals.size() / state_len;
     for (int i{}; i < num_state_vecs; ++i) {
         const Eigen::VectorXd dstate_dt
-            = traj_dstate_dt_vars(Eigen::seqN(i * state_len, state_len));
+            = traj_dyn_vals(Eigen::seqN(i * state_len, state_len));
         state_grad_vals.push_back(dstate_dt);
     }
     return LinearSpline(state_grad_vals, start_time, traj_dur);
@@ -405,7 +403,7 @@ SampleTraj createCollocationTraj(const double start_time,
                                  const double dt_segment,
                                  const Eigen::VectorXd &traj_state_vars,
                                  const int state_len,
-                                 const Eigen::VectorXd &traj_dstate_dt_vars)
+                                 const Eigen::VectorXd &traj_dyn_vals)
 {
     SampleTraj traj;
     const int num_samples = traj_state_vars.size() / state_len;
@@ -414,7 +412,7 @@ SampleTraj createCollocationTraj(const double start_time,
         const Eigen::VectorXd state
             = traj_state_vars(Eigen::seqN(i * state_len, state_len));
         const Eigen::VectorXd dstate_dt
-            = traj_dstate_dt_vars(Eigen::seqN(i * state_len, state_len));
+            = traj_dyn_vals(Eigen::seqN(i * state_len, state_len));
         traj.push_back(
             {.time = time,
              .q = state(Eigen::seqN(0, state_len / 2)),
@@ -552,20 +550,20 @@ int main(int argc, char **argv)
     ///////////////////////////////////////////////////////////////////////
     // Save solution to file
     //////////////////////////////////////////////////////////////////////
-    const Eigen::VectorXd traj_dstate_dt_vars
-        = createStateGradTimeVars(start_time,
-                                  traj_state_vars->GetValues(),
-                                  state_len,
-                                  traj_control_vars->GetValues(),
-                                  control_len,
-                                  dt_segment,
-                                  model);
+    const Eigen::VectorXd dyn_vals
+        = createDynVals(start_time,
+                        traj_state_vars->GetValues(),
+                        state_len,
+                        traj_control_vars->GetValues(),
+                        control_len,
+                        dt_segment,
+                        model);
     const SampleTraj coll_traj
         = createCollocationTraj(start_time,
                                 dt_segment,
                                 traj_state_vars->GetValues(),
                                 state_len,
-                                traj_dstate_dt_vars);
+                                dyn_vals);
 
     saveSampleTrajCsv("nlp-solution-trapezoidal-cartpole.csv", coll_traj);
 
@@ -578,13 +576,10 @@ int main(int argc, char **argv)
                             traj_dur,
                             traj_state_vars->GetValues(),
                             state_len,
-                            traj_dstate_dt_vars);
+                            dyn_vals);
 
-    const LinearSpline dstate_dt_spline
-        = createStateGradTimeSpline(start_time,
-                                    traj_dur,
-                                    traj_dstate_dt_vars,
-                                    state_len);
+    const LinearSpline dyn_spline
+        = createDynSpline(start_time, traj_dur, dyn_vals, state_len);
 
     // create sample trajectory
     const double sample_period = 0.020;
@@ -592,7 +587,7 @@ int main(int argc, char **argv)
                                                     sample_period,
                                                     traj_dur,
                                                     state_spline,
-                                                    dstate_dt_spline);
+                                                    dyn_spline);
 
     // save sample trajectory to file
     saveSampleTrajCsv("sample-traj-trapezoidal-cartpole.csv", sample_traj);
