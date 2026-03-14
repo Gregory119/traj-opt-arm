@@ -74,7 +74,7 @@ Simulator::~Simulator()
 #endif
 }
 
-void Simulator::setTrajectory(SampleTraj ctrl_traj)
+void Simulator::setTrajectory(DiscreteJointStateTraj ctrl_traj)
 {
     // todo: validate size of state
     m_ctrl_traj_orig = std::move(ctrl_traj);

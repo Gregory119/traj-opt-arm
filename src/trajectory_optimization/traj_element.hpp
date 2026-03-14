@@ -11,4 +11,4 @@ struct TrajElement
     Eigen::VectorXd ddq;
 };
 
-using SampleTraj = std::deque<TrajElement>;
+using DiscreteJointStateTraj = std::deque<TrajElement>;
