@@ -282,22 +282,31 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     return jac;
 }
 
-Eigen::VectorXd guessStateTraj(const int state_len,
+void guessStateTraj(const int state_len,
                                const int num_segments,
                                const Eigen::VectorXd &state_start,
-                               const Eigen::VectorXd &state_end)
+                               const Eigen::VectorXd &state_end,
+                               Eigen::VectorXd& state_col_init,
+                               Eigen::VectorXd& state_mid_init)
 {
+
     const int num_time_pts = num_segments + 1;
-    Eigen::VectorXd ret = Eigen::VectorXd::Zero(num_time_pts * state_len);
     // linearly interpolate from start state to end state
     for (int k{}; k < num_time_pts; ++k) {
-        auto statek = ret(Eigen::seqN(k * state_len, state_len));
+        auto statek = state_col_init(Eigen::seqN(k * state_len, state_len));
         const double alpha
               = static_cast<double>(k)
               / (num_time_pts - 1);  // trajectory progress factor
         statek = alpha * (state_end - state_start) + state_start;
+
+        //midpoint initialization
+        if(k<num_segments){
+            auto state_mid_i = state_mid_init(Eigen::seqN(k* state_len, state_len));
+            const double alpha_mid = ((2*k)-1)/(2*num_segments);
+            state_mid_i = alpha_mid * (state_start - state_end) + state_start;
+        }
     }
-    return ret;
+    return;
 }
 
 Eigen::VectorXd createStateGradTimeVars(
@@ -552,12 +561,15 @@ int main(int argc, char **argv)
                                                                 state_start,
                                                                 state_end);
 
-    // init guess for state variables
-    auto state_init
-        = guessStateTraj(state_len, num_segments, state_start, state_end);
+    //initialize knot points and midpoints
+    Eigen::VectorXd state_col_init= Eigen::VectorXd::Zero((num_segments+1) * state_len);
+    Eigen::VectorXd state_mid_init= Eigen::VectorXd::Zero(num_segments * state_len);
+
+    guessStateTraj(state_len, num_segments, state_start, state_end, state_col_init, state_mid_init);
+
     auto traj_state_vars
         = std::make_shared<TrajectoryVariables>("traj_state_vars",
-                                                std::move(state_init),
+                                                std::move(state_col_init),
                                                 std::move(state_bounds));
     nlp.AddVariableSet(traj_state_vars);
 
@@ -580,7 +592,8 @@ int main(int argc, char **argv)
     // one per segment
     const int num_state_mid_vars = num_segments * state_len;
     auto state_mid_bounds = createMidpointStateBounds(num_state_mid_vars, state_len, d_max);
-    auto state_mid_init = Eigen::VectorXd::Zero(num_state_mid_vars);
+    //auto state_mid_init = Eigen::VectorXd::Zero(num_state_mid_vars);
+
     auto traj_state_mid_vars = std::make_shared<TrajectoryVariables>(
         "traj_state_mid_vars",
         std::move(state_mid_init),
