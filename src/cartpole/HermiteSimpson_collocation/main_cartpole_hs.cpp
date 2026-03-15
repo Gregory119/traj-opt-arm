@@ -11,11 +11,11 @@
 #include <rapidcsv.h>
 
 
-#include "control_effort_HS_cost.hpp"
+#include "control_effort_hs_cost.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
 #include "trajectory_variables.hpp"
-#include "HermiteSimpson_collocation_constraints.hpp"
+#include "hermite_simpson_collocation_constraints.hpp"
 
 namespace pin = pinocchio;
 
@@ -275,7 +275,7 @@ ifopt::Component::Jacobian jacCartpoleDynWrtControl(
     // fill da/dtau(0), which is the first column of da/dtau, where tau is the
     // generalized joint vector.
     for (int i{}; i < state_len / 2; ++i) {
-        triplets.push_back({i + state_len / 2, 0, data.ddq_dtau(i, 0)});
+        triplets.push_back({i + state_len / 2, 0, ddq_dtau(i, 0)});
     }
     ifopt::Component::Jacobian jac(state_len, 1);
     jac.setFromTriplets(triplets.cbegin(), triplets.cend());
@@ -649,8 +649,8 @@ int main(int argc, char **argv)
     ipopt.SetOption("tol", 1e-3);
     ipopt.SetOption("max_iter", 3000);
     ipopt.SetOption("max_cpu_time", 60.0);
-    // ipopt.SetOption("print_level", 5);
-    // ipopt.SetOption("print_frequency_time", 3.0);
+    ipopt.SetOption("print_level", 5);
+    ipopt.SetOption("print_frequency_time", 3.0);
     ipopt.SetOption("derivative_test", "first-order");
     ipopt.SetOption("mu_strategy", "adaptive");
     ipopt.SetOption("output_file", "ipopt.out");
