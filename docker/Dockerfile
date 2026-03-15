@@ -55,7 +55,7 @@ RUN apt-get update && apt-get install -qqy robotpkg-py3*-pinocchio
 ###################################################
 # install debug tools
 ###################################################
-RUN apt-get update && apt-get install systemd-coredump gdb
+RUN apt-get update && apt-get install -y systemd-coredump gdb
 
 ###################################################
 # create directory to be mapped
