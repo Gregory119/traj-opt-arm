@@ -12,3 +12,12 @@ struct JointState
 };
 
 using DiscreteJointStateTraj = std::deque<JointState>;
+
+struct JointData
+{
+    double time;
+    Eigen::VectorXd data;
+};
+
+using DiscreteJointDataTraj
+    = std::deque<JointData>;

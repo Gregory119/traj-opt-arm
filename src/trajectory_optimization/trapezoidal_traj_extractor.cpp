@@ -46,7 +46,21 @@ DiscreteJointStateTraj TrapezoidalTrajExtractor::createCollocationStateTraj(
     return traj;
 }
 
-DiscreteJointStateTraj TrapezoidalTrajExtractor::createSampledJointTraj(
+DiscreteJointDataTraj TrapezoidalTrajExtractor::createCollocationCtrlTraj(
+    const pinocchio::Model &model)
+{
+    DiscreteJointDataTraj traj;
+    const int num_samples = m_ctrl_vars.size() / m_ctrl_len;
+    for (int i{}; i < num_samples; ++i) {
+        const double time = i * m_dt_segment + m_start_time;
+        const Eigen::VectorXd ctrl
+            = m_ctrl_vars(Eigen::seqN(i * m_ctrl_len, m_ctrl_len));
+        traj.push_back({.time = time, .data = ctrl});
+    }
+    return traj;
+}
+
+DiscreteJointStateTraj TrapezoidalTrajExtractor::createSampledStateTraj(
     const double sample_period)
 {
     // create quadratic spline
@@ -58,6 +72,29 @@ DiscreteJointStateTraj TrapezoidalTrajExtractor::createSampledJointTraj(
     return createDiscreteJointStateTraj(sample_period,
                                         state_spline,
                                         dyn_spline);
+}
+
+DiscreteJointDataTraj TrapezoidalTrajExtractor::createSampledCtrlTraj(
+    const double sample_period)
+{
+    // create control spline
+    std::vector<Eigen::VectorXd> ctrl_vals;
+    for (size_t i{}; i < m_ctrl_len; ++i) {
+        const Eigen::VectorXd ctrl
+            = m_ctrl_vars(Eigen::seqN(i * m_ctrl_len, m_ctrl_len));
+        ctrl_vals.push_back(ctrl);
+    }
+    const LinearSpline ctrl_spline(ctrl_vals, m_start_time, m_dur);
+
+    // sample spline
+    DiscreteJointDataTraj sampled_traj;
+    const int num_samples = static_cast<int>(m_dur / sample_period) + 1;
+    for (int i{}; i < num_samples; ++i) {
+        const double time = i * sample_period + m_start_time;
+        sampled_traj.push_back(
+            JointData{.time = time, .data = ctrl_spline.getValue(time)});
+    }
+    return sampled_traj;
 }
 
 QuadraticSpline TrapezoidalTrajExtractor::createStateSpline()

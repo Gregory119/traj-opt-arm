@@ -17,7 +17,7 @@ public:
     using DynFn = std::function<Eigen::VectorXd(const Eigen::VectorXd &state,
                                                 const Eigen::VectorXd &control,
                                                 const double time,
-                                                const pinocchio::Model& model)>;
+                                                const pinocchio::Model &model)>;
 
     TrapezoidalTrajExtractor(const double start_time,
                              const double traj_dur,
@@ -29,17 +29,17 @@ public:
                              const pinocchio::Model &model,
                              const DynFn &dyn_fn);
 
-    // get collocation traj
-    DiscreteJointStateTraj createCollocationStateTraj(const pinocchio::Model &model);
+    // Get collocation traj. This is equivalent to the NLP solution without any
+    // post processing (no use of splines or interpolation).
+    DiscreteJointStateTraj createCollocationStateTraj(
+        const pinocchio::Model &model);
+    DiscreteJointDataTraj createCollocationCtrlTraj(
+        const pinocchio::Model &model);
 
-    // DiscreteJointTorqueTraj createCollocationCtrlTraj(const pinocchio::Model
-    // &model);
-
-    // sample trajectory
-    DiscreteJointStateTraj createSampledJointTraj(const double sample_period);
-
-    // DiscreteJointTorqueTraj createSampledCtrlTraj(const double
-    // sample_period);
+    // Formed by first creating splines from the NLP solution and then
+    // interpolating based on the sample period.
+    DiscreteJointStateTraj createSampledStateTraj(const double sample_period);
+    DiscreteJointDataTraj createSampledCtrlTraj(const double sample_period);
 
 private:
     Eigen::VectorXd createDynVals(const pinocchio::Model &model);
