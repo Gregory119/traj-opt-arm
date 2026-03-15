@@ -79,7 +79,8 @@ DiscreteJointDataTraj TrapezoidalTrajExtractor::createSampledCtrlTraj(
 {
     // create control spline
     std::vector<Eigen::VectorXd> ctrl_vals;
-    for (size_t i{}; i < m_ctrl_len; ++i) {
+    const int num_ctrl_vecs = m_ctrl_vars.size() / m_ctrl_len;
+    for (size_t i{}; i < num_ctrl_vecs; ++i) {
         const Eigen::VectorXd ctrl
             = m_ctrl_vars(Eigen::seqN(i * m_ctrl_len, m_ctrl_len));
         ctrl_vals.push_back(ctrl);
