@@ -80,11 +80,11 @@ Eigen::VectorXd HermSimpCollocationConstraints::GetValues() const
     assert(state_mid_vars.size() / m_state_len == m_num_segments);
     assert(control_mid_vars.size() / m_control_len == m_num_segments);
 
-    const double h = m_dt_segment; //shortened for equations
+    const double h = m_dt_segment;
 
     for (int k{}; k < m_num_segments; ++k) {
         // get state and control k
-        auto xk //shortened these names to make their use in equations cleaner
+        auto xk 
             = state_vars(Eigen::seqN(k * m_state_len, m_state_len));
         auto uk
             = control_vars(Eigen::seqN(k * m_control_len, m_control_len));
@@ -96,9 +96,9 @@ Eigen::VectorXd HermSimpCollocationConstraints::GetValues() const
         // get state and control k+1. The number of time points is one more
         // than the number of time segements, so this index should not go
         // out of bounds.
-        auto xk1 //shortened these names to make their use in equations cleaner
+        auto xk1 
             = state_vars(Eigen::seqN((k + 1) * m_state_len, m_state_len));
-        auto uk1 //shortened these names to make their use in equations cleaner
+        auto uk1 
             = control_vars(Eigen::seqN((k + 1) * m_control_len, m_control_len));
         // time relative to start time of zero
         const double tk1 = (k + 1) * m_dt_segment;
