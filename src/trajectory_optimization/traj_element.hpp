@@ -3,7 +3,7 @@
 #include <deque>
 #include <vector>
 
-struct TrajElement
+struct JointState
 {
     double time;
     Eigen::VectorXd q;
@@ -11,4 +11,13 @@ struct TrajElement
     Eigen::VectorXd ddq;
 };
 
-using SampleTraj = std::deque<TrajElement>;
+using DiscreteJointStateTraj = std::deque<JointState>;
+
+struct JointData
+{
+    double time;
+    Eigen::VectorXd data;
+};
+
+using DiscreteJointDataTraj
+    = std::deque<JointData>;
