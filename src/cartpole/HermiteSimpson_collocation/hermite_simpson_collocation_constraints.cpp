@@ -106,7 +106,6 @@ Eigen::VectorXd HermSimpCollocationConstraints::GetValues() const
             = m_dyn_fn(xk1, uk1, tk1);
         assert(fk1.size() == m_state_len);
 
-
         // midpoint decision vars
         auto xc = state_mid_vars(Eigen::seqN(k * m_state_len, m_state_len));
         auto uc = control_mid_vars(Eigen::seqN(k * m_control_len, m_control_len));
@@ -118,7 +117,6 @@ Eigen::VectorXd HermSimpCollocationConstraints::GetValues() const
         const Eigen::VectorXd c_mid = xc - 0.5 * (xk + xk1) - (h / 8.0) * (fk - fk1);
         //Simpson defect
         const Eigen::VectorXd c_def = xk1 - xk - (h / 6.0) * (fk + 4.0 * fc + fk1);
-
 
         const int row_mid = (2 * k) * m_state_len;
         const int row_def = row_mid + m_state_len;
