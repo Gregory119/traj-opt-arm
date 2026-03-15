@@ -644,9 +644,6 @@ int main(int argc, char **argv)
     std::cout << "collocation constraint values:" << std::endl;
     std::cout << col_constraints->GetValues().transpose() << std::endl;
 
-    // nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>());
-    // nlp.PrintCurrent();
-
     // choose solver and options
     ifopt::IpoptSolver ipopt;
     ipopt.SetOption("tol", 1e-3);
