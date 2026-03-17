@@ -62,13 +62,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--traj-data-dir", help="Path to directory containing trajectory data files.", type=Path, required=True)
     parser.add_argument("--algorithm", help="Type of algorithm.", type=str, choices=["Trapezoidal", "Hermite-Simpson"], default="Trapezoidal")
+    parser.add_argument("--model", help="Type of model.", type=str, choices=["cartpole", "so101"], default="Trapezoidal")
     args = parser.parse_args()
 
     # todo: support different algorithm and problem names
-    filename_collocation_state_traj = "collocation-state-traj-trapezoidal-cartpole.csv"
-    filename_collocation_ctrl_traj = "collocation-ctrl-traj-trapezoidal-cartpole.csv"
-    filename_sample_state_traj = "sample-state-traj-trapezoidal-cartpole.csv"
-    filename_sample_ctrl_traj = "sample-ctrl-traj-trapezoidal-cartpole.csv"
+    algs_lower = args.algorithm.lower()
+    filename_collocation_state_traj = f"collocation-state-traj-{algs_lower}-{args.model}.csv"
+    filename_collocation_ctrl_traj = f"collocation-ctrl-traj-{algs_lower}-{args.model}.csv"
+    filename_sample_state_traj = f"sample-state-traj-{algs_lower}-{args.model}.csv"
+    filename_sample_ctrl_traj = f"sample-ctrl-traj-{algs_lower}-{args.model}.csv"
 
     fig_ax_tuples = plot_state_traj(
         path_collocation_state_traj=args.traj_data_dir / filename_collocation_state_traj,
