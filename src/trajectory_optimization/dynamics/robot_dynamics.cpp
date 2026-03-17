@@ -10,11 +10,6 @@ Eigen::VectorXd dyn(const Eigen::VectorXd &state,
     // data required by algorithm
     pin::Data data(model);
 
-    // state = x = [q, dq] = [q1, q2, dq1, dq2]
-    assert(state.size() == 4);
-    // control = [u]
-    assert(control.size() == 1);
-
     // Map control inputs to torque. This assumes control elements are in order
     // of joint torques, up to the size of the control vector.
     Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
@@ -45,11 +40,6 @@ Jacobian jacDynWrtState(const Eigen::VectorXd &state,
 {
     // data required by algorithm
     pin::Data data(model);
-
-    // state = x = [q, dq] = [q1, q2, dq1, dq2]
-    assert(state.size() == 4);
-    // control = [u]
-    assert(control.size() == 1);
 
     // Map control inputs to torque. This assumes control elements are in order
     // of joint torques, up to the size of the control vector.
@@ -133,11 +123,6 @@ Jacobian jacDynWrtControl(const Eigen::VectorXd &state,
     // data required by algorithm
     pin::Data data(model);
 
-    // state = x = [q, dq] = [q1, q2, dq1, dq2]
-    assert(state.size() == 4);
-    // control = [u]
-    assert(control.size() == 1);
-
     // Map control inputs to torque. This assumes control elements are in order
     // of joint torques, up to the size of the control vector.
     Eigen::VectorXd tau = Eigen::VectorXd::Zero(model.nv);
@@ -164,26 +149,31 @@ Jacobian jacDynWrtControl(const Eigen::VectorXd &state,
                                ddq_dtau);
 
     /*
-      Jacobian of the forward dynamics function f w.r.t the control u=[tau(0)]
-      is:
-      df/du = df/dtau(0) =
-      [dv/dtau(0);
-       da/dtau(0)] =
+      Jacobian of the forward dynamics function f w.r.t the control u is:
+
+      df/du =
+      [dv/du;
+       da/du] =
       [0;
-       da/dtau(0)]
+       da/du]
       where v = dq/dt, a = dv / dt
+
+      The length of u can be up to the length of the number of joints, so only
+      use the first len(u) columns of da/dtau for da/du.
      */
 
     const int state_len = state.size();
     std::vector<Eigen::Triplet<double>> triplets;
     triplets.reserve(state_len / 2);
-    // fill da/dtau(0), which is the first column of da/dtau, where tau is the
-    // generalized joint vector.
     // std::cout << "ddq_dtau = \n" << ddq_dtau << std::endl;
+
+    // fill da/du
     for (int i{}; i < state_len / 2; ++i) {
-        triplets.push_back({i + state_len / 2, 0, ddq_dtau(i, 0)});
+        for (int j{}; j < control.size(); ++j) {
+            triplets.push_back({i + state_len / 2, j, ddq_dtau(i, j)});
+        }
     }
-    Jacobian jac(state_len, 1);
+    Jacobian jac(state_len, control.size());
     jac.setFromTriplets(triplets.cbegin(), triplets.cend());
     return jac;
 }
