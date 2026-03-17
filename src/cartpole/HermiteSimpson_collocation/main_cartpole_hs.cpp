@@ -302,7 +302,7 @@ void guessStateTraj(const int state_len,
         //midpoint initialization
         if(k<num_segments){
             auto state_mid_i = state_mid_init(Eigen::seqN(k* state_len, state_len));
-            const double alpha_mid = ((2*k)-1)/(2*num_segments);
+            const double alpha_mid = ((2 * k) - 1) / (2 * num_segments);
             state_mid_i = alpha_mid * (state_start - state_end) + state_start;
         }
     }
@@ -627,21 +627,39 @@ int main(int argc, char **argv)
                                             const double time) {
         return jacCartpoleDynWrtControl(state, control, time, model);
     };
-    const int num_constraints = 2 * state_len * num_segments;
-    const auto col_constraints
-        = std::make_shared<HermSimpCollocationConstraints>(
-        num_constraints,
-        traj_state_vars,
-        state_len,
-        traj_control_vars,
-        traj_state_mid_vars,    // midpoint states 
-        traj_control_mid_vars,  // midpoint controls 
-        control_len,
-        dt_segment,
-        dyn_fn,
-        jac_dyn_wrt_state_fn,
-        jac_dyn_wrt_control_fn);
-    nlp.AddConstraintSet(col_constraints);
+    const int num_hermite_constraints = state_len * num_segments;
+    const int num_simpson_constraints = state_len * num_segments;
+
+    const auto hermite_constraints
+        = std::make_shared<HermiteMidpointConstraints>(
+            num_hermite_constraints,
+            traj_state_vars,
+            state_len,
+            traj_control_vars,
+            traj_state_mid_vars,
+            traj_control_mid_vars,
+            control_len,
+            dt_segment,
+            dyn_fn,
+            jac_dyn_wrt_state_fn,
+            jac_dyn_wrt_control_fn);
+
+    const auto simpson_constraints
+        = std::make_shared<SimpsonDefectConstraints>(
+            num_simpson_constraints,
+            traj_state_vars,
+            state_len,
+            traj_control_vars,
+            traj_state_mid_vars,
+            traj_control_mid_vars,
+            control_len,
+            dt_segment,
+            dyn_fn,
+            jac_dyn_wrt_state_fn,
+            jac_dyn_wrt_control_fn);
+
+    nlp.AddConstraintSet(hermite_constraints);
+    nlp.AddConstraintSet(simpson_constraints);
     nlp.AddCostSet(std::make_shared<ControlEffortHermSimpCost>(
         "effort_cost",
         traj_control_vars->GetName(),
@@ -654,8 +672,11 @@ int main(int argc, char **argv)
     std::cout << traj_state_vars->GetValues().transpose() << std::endl;
     std::cout << "control variables: " << std::endl;
     std::cout << traj_control_vars->GetValues().transpose() << std::endl;
-    std::cout << "collocation constraint values:" << std::endl;
-    std::cout << col_constraints->GetValues().transpose() << std::endl;
+    std::cout << "Hermite midpoint constraint values:" << std::endl;
+    std::cout << hermite_constraints->GetValues().transpose() << std::endl;
+
+    std::cout << "Simpson defect constraint values:" << std::endl;
+    std::cout << simpson_constraints->GetValues().transpose() << std::endl;
 
     // choose solver and options
     ifopt::IpoptSolver ipopt;
@@ -676,8 +697,11 @@ int main(int argc, char **argv)
     std::cout << traj_state_vars->GetValues().transpose() << std::endl;
     std::cout << "control variables: " << std::endl;
     std::cout << traj_control_vars->GetValues().transpose() << std::endl;
-    std::cout << "collocation constraint values:" << std::endl;
-    std::cout << col_constraints->GetValues().transpose() << std::endl;
+    std::cout << "Hermite midpoint constraint values:" << std::endl;
+    std::cout << hermite_constraints->GetValues().transpose() << std::endl;
+
+    std::cout << "Simpson defect constraint values:" << std::endl;
+    std::cout << simpson_constraints->GetValues().transpose() << std::endl;
 
     /*
     ///////////////////////////////////////////////////////////////////////

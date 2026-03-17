@@ -16,65 +16,141 @@ std::vector<Eigen::Triplet<double>> sparseMatrixToTriplets(
 // todo: consider the final time as an optimization variable in order to support
 // minimizing total time of a trajectory
 
-class HermSimpCollocationConstraints final : public ifopt::ConstraintSet
+using DynFn = std::function<Eigen::VectorXd(const Eigen::VectorXd &state,
+                                            const Eigen::VectorXd &control,
+                                            const double time)>;
+
+using JacobianDynFn = std::function<ifopt::Component::Jacobian(
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time)>;
+
+class HermiteMidpointConstraints final : public ifopt::ConstraintSet
 {
 public:
-    // calback signature for evaluating the dynamics
-    using DynFn = std::function<Eigen::VectorXd(const Eigen::VectorXd &state,
-                                                const Eigen::VectorXd &control,
-                                                const double time)>;
-    // callback signature for evaluating the jacobian of the dynamics w.r.t one
-    // of its inputs (eg. state, control, or time)
-    using JacobianDynFn = std::function<ifopt::Component::Jacobian(
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time)>;
-
     /*
-     * @param num_constraints This is the total number of constraint equations
-     *   produced by all of the defect constraint equations. Each defect
-     *   constraint equation uses vectors, representing a state length number of
-     *   equations. Therefore, the total number of defect constraints equals (#
-     *   number of defect constraint equations) * (state length).
-     * @param state_len The number of elements in a state vector at a particular
-     *   time.
-     * @param control_len The number of elements in a control vector at a
-     *   particular time.
-     * @param dt_segment The fixed duration of every time segement.
-     * @param dyn_fn Callback function to get the value of the dynamics
-     *   function.
-     * @param jac_dyn_wrt_state_fn Callback function to get the value of the
-     *   jacobian of the dynamics function w.r.t the input state.
-     * @param jac_dyn_wrt_control_fn Callback function to get the value of the
-     *   jacobian of the dynamics function w.r.t the input state.
+     * Hermite midpoint constraints for Kelly Eq. (4.3):
+     *   x_c,k - 0.5 (x_k + x_{k+1}) - (h/8) (f_k - f_{k+1}) = 0
+     *
+     * Reference: Kelly, "An Introduction to Trajectory Optimization:
+     * How to Do Your Own Direct Collocation".
+     *
+     * @param num_constraints Total number of scalar Hermite equations.
+     *   This should be state_len * num_segments.
      */
-    HermSimpCollocationConstraints(
+    HermiteMidpointConstraints(
         const int num_constraints,
         const std::shared_ptr<TrajectoryVariables> &state_vars,
         const int state_len,
         const std::shared_ptr<TrajectoryVariables> &ctrl_vars,
-        const std::shared_ptr<TrajectoryVariables> &state_mid_vars,               
-        const std::shared_ptr<TrajectoryVariables> &ctrl_mid_vars,  
+        const std::shared_ptr<TrajectoryVariables> &state_mid_vars,
+        const std::shared_ptr<TrajectoryVariables> &ctrl_mid_vars,
         const int control_len,
         const double dt_segment,
         const DynFn &dyn_fn,
         const JacobianDynFn &jac_dyn_wrt_state_fn,
         const JacobianDynFn &jac_dyn_wrt_control_fn);
-    // Get the current values of all constraints
-    Eigen::VectorXd GetValues() const override;
 
+    Eigen::VectorXd GetValues() const override;
     ifopt::Component::VecBound GetBounds() const override
     {
-        // HS constraint residuals should all be zero(this includes the midpoint)
-        ifopt::Component::VecBound bounds(GetRows(), {0.0, 0.0});
-        return bounds;
+        return ifopt::Component::VecBound(GetRows(), {0.0, 0.0});
     }
 
-    // Create the jacobian of the contraints w.r.t all of the optimization
-    // variables (state, control, and midpoints).
-    void FillJacobianBlock(
-        std::string var_set,
-        ifopt::Component::Jacobian &jac_block) const override;
+    void FillJacobianBlock(std::string var_set,
+                           ifopt::Component::Jacobian &jac_block) const override;
+
+private:
+    enum class VariableType
+    {
+        STATE,
+        CONTROL,
+        STATE_MID,
+        CONTROL_MID
+    };
+
+    // Create the jacobian of the constraints w.r.t the specified variable
+    // types.
+    void FillJacobianWrt(const VariableType var_type,
+                         ifopt::Component::Jacobian &jac_block) const;
+
+    int getVarTypeLen(const VariableType var_type) const;
+
+    // Create the jacobian of defect constraint vector k w.r.t the vector
+    // variable type (eg. state, control defects and state,control midpoints) at segment k ,knot point j
+    ifopt::Component::Jacobian jacConstraintsWrtVar(
+        const VariableType var_type,
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const;
+
+    // Create the jacobian of defect constraint vector k w.r.t the state vector
+    // at time point j.
+    ifopt::Component::Jacobian jacConstraintsWrtState(
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const;
+
+    // Create the jacobian of defect constraint vector k w.r.t the control
+    // vector at time point j.
+    ifopt::Component::Jacobian jacConstraintsWrtControl(
+        const size_t k,
+        const size_t j,
+        const Eigen::VectorXd &state,
+        const Eigen::VectorXd &control,
+        const double time) const;
+
+    const std::shared_ptr<TrajectoryVariables> m_state_vars;
+    const int m_state_len;
+    const std::shared_ptr<TrajectoryVariables> m_ctrl_vars;
+    const int m_control_len;
+    const std::shared_ptr<TrajectoryVariables> m_state_mid_vars;
+    const std::shared_ptr<TrajectoryVariables> m_ctrl_mid_vars;
+    const double m_dt_segment;
+    const DynFn m_dyn_fn;
+    const JacobianDynFn m_jac_dyn_wrt_state_fn;
+    const JacobianDynFn m_jac_dyn_wrt_control_fn;
+    int m_num_segments;
+};
+
+class SimpsonDefectConstraints final : public ifopt::ConstraintSet
+{
+public:
+    /*
+     * Simpson defect constraints for Kelly Eq. (4.4):
+     *   x_{k+1} - x_k - (h/6) (f_k + 4 f_c,k + f_{k+1}) = 0
+     *
+     * Reference: Kelly, "An Introduction to Trajectory Optimization:
+     * How to Do Your Own Direct Collocation".
+     *
+     * @param num_constraints Total number of scalar Simpson equations.
+     *   This should be state_len * num_segments.
+     */
+    SimpsonDefectConstraints(
+        const int num_constraints,
+        const std::shared_ptr<TrajectoryVariables> &state_vars,
+        const int state_len,
+        const std::shared_ptr<TrajectoryVariables> &ctrl_vars,
+        const std::shared_ptr<TrajectoryVariables> &state_mid_vars,
+        const std::shared_ptr<TrajectoryVariables> &ctrl_mid_vars,
+        const int control_len,
+        const double dt_segment,
+        const DynFn &dyn_fn,
+        const JacobianDynFn &jac_dyn_wrt_state_fn,
+        const JacobianDynFn &jac_dyn_wrt_control_fn);
+
+    Eigen::VectorXd GetValues() const override;
+    ifopt::Component::VecBound GetBounds() const override
+    {
+        return ifopt::Component::VecBound(GetRows(), {0.0, 0.0});
+    }
+
+    void FillJacobianBlock(std::string var_set,
+                           ifopt::Component::Jacobian &jac_block) const override;
 
 private:
     enum class VariableType
