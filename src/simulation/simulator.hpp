@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -31,7 +32,8 @@ private:
     Simulator(const std::string &model_path,
               const int control_step_ms = 10,
               const int vis_fps = 50,
-              const int sim_step_ms = 1);
+              const int sim_step_ms = 1,
+              const std::string &record_filename_csv = "sim-record.csv");
 
     void reset();
 
@@ -51,6 +53,7 @@ private:
     void dispFrame();
 
     void updateControl();
+    void record();
 
     const int m_control_step_ms;
     const int m_frame_step_ms;
@@ -76,11 +79,23 @@ private:
     static double lastx;
     static double lasty;
 
-    std::vector<PeriodicSimTimer> m_timers;
+    enum class TimerId
+    {
+        Display,
+        Control,
+        Record
+    };
+
+    std::map<TimerId, PeriodicSimTimer>
+        m_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
     // keep a copy of the original trajectory to enable resetting the simulation
     DiscreteJointStateTraj m_target_traj_orig;
-    // actual control trajectory that gets popped during sim
+    // target trajectory that gets popped during sim
     DiscreteJointStateTraj m_target_traj;
+    // recorded actual trajectory
+    DiscreteJointStateTraj m_traj_record;
+
+    const std::string m_record_filename_csv;
 };

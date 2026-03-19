@@ -1,6 +1,7 @@
 #include "simulator.hpp"
 
 #include <iostream>
+#include <save_trajectory.hpp>
 
 bool Simulator::button_left = false;
 bool Simulator::button_middle = false;
@@ -17,19 +18,33 @@ std::shared_ptr<Simulator> Simulator::getInstance()
 Simulator::Simulator(const std::string &model_path,
                      const int control_step_ms,
                      const int vis_fps,
-                     const int sim_step_ms)
+                     const int sim_step_ms,
+                     const std::string &record_filename_csv)
     : m_control_step_ms{control_step_ms}
     , m_frame_step_ms{static_cast<int>(1.0 / vis_fps * 1000.0)}
     , m_sim_step_ms{sim_step_ms}
-    , m_timers{
-          {PeriodicSimTimer(m_frame_step_ms / 1000.0,
-                            [this](PeriodicSimTimer &, const double /*time*/) {
-                                dispFrame();
-                            }),  // frame rate timer
-           PeriodicSimTimer(m_control_step_ms / 1000.0,
-                            [this](PeriodicSimTimer &, const double /*time*/) {
-                                updateControl();
-                            })}}  // control timer
+    , m_timers{{// display frame rate timer
+                {TimerId::Display,
+                 PeriodicSimTimer(
+                     m_frame_step_ms / 1000.0,
+                     [this](PeriodicSimTimer &, const double /*time*/) {
+                         dispFrame();
+                     })},
+                // control timer
+                {TimerId::Control,
+                 PeriodicSimTimer(
+                     m_control_step_ms / 1000.0,
+                     [this](PeriodicSimTimer &, const double /*time*/) {
+                         updateControl();
+                     })},
+                // record data timer
+                {TimerId::Record,
+                 PeriodicSimTimer(
+                     m_sim_step_ms / 1000.0,
+                     [this](PeriodicSimTimer &, const double /*time*/) {
+                         record();
+                     })}}}
+    , m_record_filename_csv{record_filename_csv}
 {
     if (m_control_step_ms % m_sim_step_ms != 0) {
         mju_error("trajectory sample step is not a multiple of the sim step");
@@ -87,7 +102,7 @@ void Simulator::run()
 {
     while (!glfwWindowShouldClose(m_window)) {
         // update timers
-        for (PeriodicSimTimer &timer : m_timers) {
+        for (auto &[_, timer] : m_timers) {
             timer.update(m_data->time);
         }
 
@@ -151,10 +166,12 @@ void Simulator::reset()
     mj_resetData(m_model, m_data);
     mj_forward(m_model, m_data);
     prev_now.reset();
-    for (PeriodicSimTimer &timer : m_timers) {
+    for (auto &[_, timer] : m_timers) {
         timer.reset();
     }
     m_target_traj = m_target_traj_orig;
+    m_traj_record.clear();
+    m_timers.find(TimerId::Record)->second.reset(true);
 }
 
 // mouse button callback
@@ -293,5 +310,32 @@ void Simulator::updateControl()
 
     for (size_t i{}; i < e->q.size(); ++i) {
         m_data->ctrl[i] = e->q(i);
+    }
+}
+
+void Simulator::record()
+{
+    Eigen::VectorXd q = Eigen::VectorXd::Zero(m_model->nq);
+    Eigen::VectorXd dq = Eigen::VectorXd::Zero(m_model->nv);
+    Eigen::VectorXd ddq = Eigen::VectorXd::Zero(m_model->nv);
+
+    assert(m_model->nq == m_model->nv);
+    for (int i{}; i < m_model->nq; ++i) {
+        q[i] = m_data->qpos[i];
+        dq[i] = m_data->qvel[i];
+        ddq[i] = m_data->qacc[i];
+    }
+    m_traj_record.push_back(JointState{.time = m_data->time,
+                                       .q = std::move(q),
+                                       .dq = std::move(dq),
+                                       .ddq = std::move(ddq)});
+
+    // save the recording if the end of the target trajectory is reached
+    if ((m_target_traj.size() == 1) && !m_traj_record.empty()) {
+        std::cout << "saving recording" << std::endl;
+        saveDiscreteJointStateTrajCsv(m_record_filename_csv, m_traj_record);
+        // stop recording by disabling the record timer
+        m_traj_record.clear();
+        m_timers.find(TimerId::Record)->second.reset(false);
     }
 }
