@@ -1,9 +1,8 @@
 #include "periodic_sim_timer.hpp"
 
-PeriodicSimTimer::PeriodicSimTimer(
-    const double period,
-    const std::function<void(PeriodicSimTimer &)> &cb,
-    const bool enable)
+PeriodicSimTimer::PeriodicSimTimer(const double period,
+                                   const Fn &cb,
+                                   const bool enable)
     : m_enable{enable}
     , m_period{period}
     , m_cb{cb}
@@ -26,7 +25,7 @@ void PeriodicSimTimer::update(const double sim_time)
     }
     // execute callback so set last trigger time
     m_last_trigger_time = sim_time;
-    m_cb(*this);
+    m_cb(*this, sim_time);
 }
 
 void PeriodicSimTimer::reset(const std::optional<bool> &enable)

@@ -245,6 +245,7 @@ int main(int argc, char **argv)
     // Send trajectory to simulated robot
     //////////////////////////////////////////////////////////////////////
     Simulator::getInstance()->setTrajectory(sampled_state_traj);
+    
     Simulator::getInstance()->run();
 
     return 0;

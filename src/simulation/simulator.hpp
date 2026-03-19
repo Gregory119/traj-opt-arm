@@ -76,11 +76,7 @@ private:
     static double lastx;
     static double lasty;
 
-    // frame rate timer
-    PeriodicSimTimer m_vis_timer;
-    // control sample timer
-    PeriodicSimTimer m_control_timer;
-    const std::vector<PeriodicSimTimer *> m_sim_timers;
+    std::vector<PeriodicSimTimer> m_timers;
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
     // keep a copy of the original trajectory to enable resetting the simulation

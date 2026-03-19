@@ -21,13 +21,15 @@ Simulator::Simulator(const std::string &model_path,
     : m_control_step_ms{control_step_ms}
     , m_frame_step_ms{static_cast<int>(1.0 / vis_fps * 1000.0)}
     , m_sim_step_ms{sim_step_ms}
-    , m_vis_timer{PeriodicSimTimer(m_frame_step_ms / 1000.0,
-                                   [this](PeriodicSimTimer &) { dispFrame(); })}
-    // frame rate timer
-    , m_control_timer{PeriodicSimTimer(
-          m_control_step_ms / 1000.0,
-          [this](PeriodicSimTimer &) { updateControl(); })}  // control timer
-    , m_sim_timers{{&m_vis_timer, &m_control_timer}}
+    , m_timers{
+          {PeriodicSimTimer(m_frame_step_ms / 1000.0,
+                            [this](PeriodicSimTimer &, const double /*time*/) {
+                                dispFrame();
+                            }),  // frame rate timer
+           PeriodicSimTimer(m_control_step_ms / 1000.0,
+                            [this](PeriodicSimTimer &, const double /*time*/) {
+                                updateControl();
+                            })}}  // control timer
 {
     if (m_control_step_ms % m_sim_step_ms != 0) {
         mju_error("trajectory sample step is not a multiple of the sim step");
@@ -85,8 +87,8 @@ void Simulator::run()
 {
     while (!glfwWindowShouldClose(m_window)) {
         // update timers
-        for (PeriodicSimTimer *timer : m_sim_timers) {
-            timer->update(m_data->time);
+        for (PeriodicSimTimer &timer : m_timers) {
+            timer.update(m_data->time);
         }
 
         // step simulation
@@ -149,8 +151,8 @@ void Simulator::reset()
     mj_resetData(m_model, m_data);
     mj_forward(m_model, m_data);
     prev_now.reset();
-    for (PeriodicSimTimer *timer : m_sim_timers) {
-        timer->reset();
+    for (PeriodicSimTimer &timer : m_timers) {
+        timer.reset();
     }
     m_target_traj = m_target_traj_orig;
 }
@@ -272,7 +274,8 @@ void Simulator::updateControl()
 
     // get the last control input up to the current time
     std::optional<JointState> e;
-    while (!m_target_traj.empty() && (m_target_traj.front().time < m_data->time)) {
+    while (!m_target_traj.empty()
+           && (m_target_traj.front().time < m_data->time)) {
         e = m_target_traj.front();
         m_target_traj.pop_front();
     }
