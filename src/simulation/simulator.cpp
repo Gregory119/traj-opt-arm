@@ -74,11 +74,11 @@ Simulator::~Simulator()
 #endif
 }
 
-void Simulator::setTrajectory(DiscreteJointStateTraj ctrl_traj)
+void Simulator::setTrajectory(DiscreteJointStateTraj target_traj)
 {
     // todo: validate size of state
-    m_ctrl_traj_orig = std::move(ctrl_traj);
-    m_ctrl_traj = m_ctrl_traj_orig;
+    m_target_traj_orig = std::move(target_traj);
+    m_target_traj = m_target_traj_orig;
 }
 
 void Simulator::run()
@@ -152,7 +152,7 @@ void Simulator::reset()
     for (PeriodicSimTimer *timer : m_sim_timers) {
         timer->reset();
     }
-    m_ctrl_traj = m_ctrl_traj_orig;
+    m_target_traj = m_target_traj_orig;
 }
 
 // mouse button callback
@@ -272,9 +272,9 @@ void Simulator::updateControl()
 
     // get the last control input up to the current time
     std::optional<JointState> e;
-    while (!m_ctrl_traj.empty() && (m_ctrl_traj.front().time < m_data->time)) {
-        e = m_ctrl_traj.front();
-        m_ctrl_traj.pop_front();
+    while (!m_target_traj.empty() && (m_target_traj.front().time < m_data->time)) {
+        e = m_target_traj.front();
+        m_target_traj.pop_front();
     }
     if (!e) {
         // Useable control not found. This can occur if sim time has not past
@@ -286,7 +286,7 @@ void Simulator::updateControl()
     // it needs to be used for the next update.  This means that once the time
     // has past through the entire trajectory, the last element will always be
     // used for the control input.
-    m_ctrl_traj.push_front(*e);
+    m_target_traj.push_front(*e);
 
     for (size_t i{}; i < e->q.size(); ++i) {
         m_data->ctrl[i] = e->q(i);

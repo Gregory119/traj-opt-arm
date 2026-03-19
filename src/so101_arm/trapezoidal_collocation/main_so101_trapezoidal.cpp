@@ -8,6 +8,7 @@
 #include "control_effort_trapezoidal_cost.hpp"
 #include "robot_dynamics.hpp"
 #include "save_trajectory.hpp"
+#include "simulator.hpp"
 #include "trajectory_variables.hpp"
 #include "trapezoidal_collocation_constraints.hpp"
 #include "trapezoidal_traj_extractor.hpp"
@@ -41,11 +42,12 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
             // path bounds
 
             // joint positions path bounds
-            for (int j{}; j < state_len/2; ++j){
-                bounds.push_back({-3.0/4.0 * std::numbers::pi, 3.0/4.0 * std::numbers::pi});
+            for (int j{}; j < state_len / 2; ++j) {
+                bounds.push_back({-1.0 / 4.0 * std::numbers::pi,
+                                  1.0 / 4.0 * std::numbers::pi});
             }
             // joint velocity path bounds
-            for (int j{}; j < state_len/2; ++j){
+            for (int j{}; j < state_len / 2; ++j) {
                 bounds.push_back({-ifopt::inf, ifopt::inf});
             }
         }
@@ -104,7 +106,7 @@ int main(int argc, char **argv)
     // state bounds
     const int state_len = 6 * 2;
     const int num_state_vars = (num_segments + 1) * state_len;
-    const Eigen::VectorXd state_end{{std::numbers::pi / 2,
+    const Eigen::VectorXd state_end{{std::numbers::pi / 4,
                                      0.0,
                                      0.0,
                                      0.0,
@@ -117,10 +119,8 @@ int main(int argc, char **argv)
                                      0.0,
                                      0.0}};
     const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
-    ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
-                                                                state_len,
-                                                                state_start,
-                                                                state_end);
+    ifopt::Component::VecBound state_bounds
+        = createStateBounds(num_state_vars, state_len, state_start, state_end);
 
     // init guess for state variables
     auto state_init
@@ -233,12 +233,19 @@ int main(int argc, char **argv)
 
     // save sample trajectory to file
     const double sample_period = 0.020;
-    saveDiscreteJointStateTrajCsv(
-        "sample-state-traj-trapezoidal-so101.csv",
-        traj_extractor.createSampledStateTraj(sample_period));
+    const DiscreteJointStateTraj sampled_state_traj
+        = traj_extractor.createSampledStateTraj(sample_period);
+    saveDiscreteJointStateTrajCsv("sample-state-traj-trapezoidal-so101.csv",
+                                  sampled_state_traj);
     saveDiscreteJointDataTrajCsv(
         "sample-ctrl-traj-trapezoidal-so101.csv",
         traj_extractor.createSampledCtrlTraj(sample_period));
+
+    ///////////////////////////////////////////////////////////////////////
+    // Send trajectory to simulated robot
+    //////////////////////////////////////////////////////////////////////
+    Simulator::getInstance()->setTrajectory(sampled_state_traj);
+    Simulator::getInstance()->run();
 
     return 0;
 }
