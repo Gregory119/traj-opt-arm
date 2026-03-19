@@ -1,11 +1,11 @@
 #include <iostream>
 #include <numbers>
+#include <pinocchio/parsers/mjcf.hpp>
 
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
 
 #include "control_effort_trapezoidal_cost.hpp"
-#include "pinocchio/parsers/urdf.hpp"
 #include "robot_dynamics.hpp"
 #include "save_trajectory.hpp"
 #include "trajectory_variables.hpp"
@@ -16,12 +16,9 @@ namespace pin = pinocchio;
 
 /*
  * Create an upper and lower bound for each state vector along the trajectory.
- * @param d Final position of the cart.
- * @param d_max Maximum position of the cart at any time along the trajectory.
  */
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
-                                             const double d_max,
                                              const Eigen::VectorXd &state_start,
                                              const Eigen::VectorXd &state_end)
 {
@@ -43,14 +40,14 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
         } else {
             // path bounds
 
-            // bound for q0
-            bounds.push_back({-d_max, d_max});
-            // bound for q1
-            bounds.push_back({-2 * std::numbers::pi, 2 * std::numbers::pi});
-            // bound for dq0
-            bounds.push_back({-ifopt::inf, ifopt::inf});
-            // bound for dq1
-            bounds.push_back({-ifopt::inf, ifopt::inf});
+            // joint positions path bounds
+            for (int j{}; j < state_len/2; ++j){
+                bounds.push_back({-3.0/4.0 * std::numbers::pi, 3.0/4.0 * std::numbers::pi});
+            }
+            // joint velocity path bounds
+            for (int j{}; j < state_len/2; ++j){
+                bounds.push_back({-ifopt::inf, ifopt::inf});
+            }
         }
     }
     assert(bounds.size() == num_state_vars);
@@ -92,9 +89,9 @@ int main(int argc, char **argv)
     }
 
     // Load the urdf model
-    const std::string urdf_filename = argv[1];
+    const std::string mj_filename = argv[1];
     pin::Model model;
-    pin::urdf::buildModel(urdf_filename, model);
+    pin::mjcf::buildModel(mj_filename, model);
     std::cout << "model name: " << model.name << std::endl;
 
     // define problem
@@ -104,19 +101,24 @@ int main(int argc, char **argv)
     const int num_segments = 10;
     const double dt_segment = traj_dur / num_segments;
 
-    // final q0 position
-    const double d = 0.8;
-
     // state bounds
-    const double d_max = 2 * d;
-    const int state_len = 4;
+    const int state_len = 6 * 2;
     const int num_state_vars = (num_segments + 1) * state_len;
-    const Eigen::VectorXd state_end{{d, std::numbers::pi, 0.0, 0.0}};
-    // const Eigen::VectorXd state_start{{d, std::numbers::pi, 0.0, 0.0}};
+    const Eigen::VectorXd state_end{{std::numbers::pi / 2,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0}};
     const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
     ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
                                                                 state_len,
-                                                                d_max,
                                                                 state_start,
                                                                 state_end);
 
@@ -130,9 +132,11 @@ int main(int argc, char **argv)
     nlp.AddVariableSet(traj_state_vars);
 
     // control bounds
-    const int control_len = 1;
+    const int control_len = 6;
     const int num_control_vars = control_len * (num_segments + 1);
-    const double max_control_force = 100.0;
+    const double rated_torque_kgcm = 10;
+    const double gravity = 9.81;
+    const double max_control_force = rated_torque_kgcm * gravity / 100.0;
     ifopt::Component::VecBound control_bounds
         = createControlBounds(num_control_vars, max_control_force);
 
@@ -221,19 +225,19 @@ int main(int argc, char **argv)
                                             model,
                                             dyn);
     saveDiscreteJointStateTrajCsv(
-        "collocation-state-traj-trapezoidal-cartpole.csv",
+        "collocation-state-traj-trapezoidal-so101.csv",
         traj_extractor.createCollocationStateTraj(model));
     saveDiscreteJointDataTrajCsv(
-        "collocation-ctrl-traj-trapezoidal-cartpole.csv",
+        "collocation-ctrl-traj-trapezoidal-so101.csv",
         traj_extractor.createCollocationCtrlTraj(model));
 
     // save sample trajectory to file
     const double sample_period = 0.020;
     saveDiscreteJointStateTrajCsv(
-        "sample-state-traj-trapezoidal-cartpole.csv",
+        "sample-state-traj-trapezoidal-so101.csv",
         traj_extractor.createSampledStateTraj(sample_period));
     saveDiscreteJointDataTrajCsv(
-        "sample-ctrl-traj-trapezoidal-cartpole.csv",
+        "sample-ctrl-traj-trapezoidal-so101.csv",
         traj_extractor.createSampledCtrlTraj(sample_period));
 
     return 0;

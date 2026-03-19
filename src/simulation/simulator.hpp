@@ -23,7 +23,7 @@ public:
 
     ~Simulator();
 
-    void setTrajectory(SampleTraj ctrl_traj);
+    void setTrajectory(DiscreteJointStateTraj ctrl_traj);
 
     void run();
 
@@ -84,7 +84,7 @@ private:
     std::optional<std::chrono::time_point<std::chrono::steady_clock>> prev_now;
 
     // keep a copy of the original trajectory to enable resetting the simulation
-    SampleTraj m_ctrl_traj_orig;
+    DiscreteJointStateTraj m_ctrl_traj_orig;
     // actual control trajectory that gets popped during sim
-    SampleTraj m_ctrl_traj;
+    DiscreteJointStateTraj m_ctrl_traj;
 };
