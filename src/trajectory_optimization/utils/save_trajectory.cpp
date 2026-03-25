@@ -87,7 +87,7 @@ void saveColBoundsCsv(const std::string &filename,
     for (int i{}; i < num_col_pts; ++i) {
         std::vector<double> row_data;
         // insert time
-        const double alpha = static_cast<double>(i) / num_col_pts;
+        const double alpha = static_cast<double>(i) / (num_col_pts-1);
         const double t = alpha * dur + start_time;
         row_data.push_back(t);
         // insert bounds
