@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     auto traj_state_vars
         = std::make_shared<TrajectoryVariables>("traj_state_vars",
                                                 std::move(state_init),
-                                                std::move(state_bounds));
+                                                state_bounds);
     nlp.AddVariableSet(traj_state_vars);
 
     // control bounds
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
     auto traj_control_vars
         = std::make_shared<TrajectoryVariables>("traj_control_vars",
                                                 std::move(control_init),
-                                                std::move(control_bounds));
+                                                control_bounds);
     nlp.AddVariableSet(traj_control_vars);
 
     // add constraints
@@ -241,11 +241,23 @@ int main(int argc, char **argv)
         "sample-ctrl-traj-trapezoidal-so101.csv",
         traj_extractor.createSampledCtrlTraj(sample_period));
 
+    // save bounds
+    saveColBoundsCsv("state-traj-bounds-trapezoidal-so101.csv",
+                     state_bounds,
+                     state_len,
+                     start_time,
+                     traj_dur);
+    saveColBoundsCsv("ctrl-traj-bounds-trapezoidal-so101.csv",
+                     control_bounds,
+                     control_len,
+                     start_time,
+                     traj_dur);
+
     ///////////////////////////////////////////////////////////////////////
     // Send trajectory to simulated robot
     //////////////////////////////////////////////////////////////////////
     Simulator::getInstance()->setTrajectory(sampled_state_traj);
-    
+
     Simulator::getInstance()->run();
 
     return 0;
