@@ -8,11 +8,13 @@ import argparse
 
 def plot_state_traj(path_collocation_state_traj: Path,
                     path_sample_state_traj: Path,
+                    path_sim_state_traj: Path,
                     algorithm_name: str):
     """Plot joint state trajectories."""
     # read data
     df_coll_state_traj = pd.read_csv(path_collocation_state_traj)
     df_sample_state_traj = pd.read_csv(path_sample_state_traj)
+    df_sim_state_traj = pd.read_csv(path_sim_state_traj)
 
     # each row is: [time, q, dq, ddq] where q, dq, and ddq are row vectors, each
     # with as many elements as there are joints
@@ -25,8 +27,12 @@ def plot_state_traj(path_collocation_state_traj: Path,
     for i in range(len(joint_label)):
         fig, ax = plt.subplots()
         for j in range(num_joints):
-            line, = ax.plot(df_coll_state_traj.time, df_coll_state_traj.iloc[:, i*num_joints + j + 1], 'o', label="{}[{}]".format(joint_label[i], j))
+            # plot collocation points
+            line, = ax.plot(df_coll_state_traj.time, df_coll_state_traj.iloc[:, i*num_joints + j + 1], 'o', label="target {}[{}]".format(joint_label[i], j))
+            # plot sample trajectory
             ax.plot(df_sample_state_traj.time, df_sample_state_traj.iloc[:, i*num_joints + j + 1], color=line.get_color())
+            # plot sim trajectory
+            ax.plot(df_sim_state_traj.time, df_sim_state_traj.iloc[:, i*num_joints + j + 1], '--', label="sim. {}[{}]".format(joint_label[i], j), color=line.get_color())
 
         ax.set_title(f"{algorithm_name} Collocation Joint {joint_title_names[i]} Trajectory")
         ax.set_xlabel("time [s]")
@@ -71,10 +77,12 @@ def main():
     filename_collocation_ctrl_traj = f"collocation-ctrl-traj-{algs_lower}-{args.model}.csv"
     filename_sample_state_traj = f"sample-state-traj-{algs_lower}-{args.model}.csv"
     filename_sample_ctrl_traj = f"sample-ctrl-traj-{algs_lower}-{args.model}.csv"
+    filename_sim_state_traj = "sim-state-traj.csv"
 
     fig_ax_tuples = plot_state_traj(
         path_collocation_state_traj=args.traj_data_dir / filename_collocation_state_traj,
         path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
+        path_sim_state_traj = args.traj_data_dir / filename_sim_state_traj,
         algorithm_name=args.algorithm
     )
 

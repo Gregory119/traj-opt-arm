@@ -33,7 +33,7 @@ private:
               const int control_step_ms = 10,
               const int vis_fps = 50,
               const int sim_step_ms = 1,
-              const std::string &record_filename_csv = "sim-record.csv");
+              const std::string &record_filename_csv = "sim-state-traj.csv");
 
     void reset();
 
