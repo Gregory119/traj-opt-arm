@@ -4,6 +4,7 @@ find_package(Threads REQUIRED)
 #paths
 add_library(so101_bus STATIC
   so101_bus.cpp
+  calibration.cpp
 )
 
 target_include_directories(so101_bus

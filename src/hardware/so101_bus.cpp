@@ -78,10 +78,22 @@ static inline uint8_t hi(uint16_t v) { return static_cast<uint8_t>((v >> 8) & 0x
 
 
 // SO101Bus class handling lifecycle / connection
+const std::vector<ServoPosRange> SO101Bus::sid_to_pos_tic_range = {{
+    {0, 0},        // unused id 0
+    {2618, 5146},  // id 1
+    {3372, 5698},  // id 2
+    {2557, 650},   // id 3
+    {0, 1017},     // id 4
+    {5746, 1942},  // id 5
+    {3469, 834},   //
+}};
 
 SO101Bus::SO101Bus() : SO101Bus(Config{}) {} //delegating default constructor for SO101_Bus and configuration classes
-SO101Bus::SO101Bus(Config cfg) : cfg_(std::move(cfg)) {} //delegating parameterized constructor for SO101_Bus and 
-                                                        // configuration classes
+
+SO101Bus::SO101Bus(Config cfg)
+    : cfg_(std::move(cfg))
+    , calibration_{sid_to_pos_tic_range}
+{}
 
 void SO101Bus::set_config(const Config& cfg) { //setter for the particular configuration
   cfg_ = cfg;
@@ -431,17 +443,17 @@ bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int ti
     out->error = err; // copy error byte to ServoStateBasic object
     if (N) std::memcpy(out->raw, tmp.data(), N);
 
-    auto u16 = [&](int idx) -> uint16_t { // 16 bit unsigned int from combined bytes 
+    auto to_u16 = [&](int idx) -> uint16_t { // 16 bit unsigned int from combined bytes 
         return (uint16_t)out->raw[idx] | ((uint16_t)out->raw[idx + 1] << 8); // combine low and high bytes into a 16 bit unsinged int
     };
-    auto s16 = [&](int idx) -> int16_t { 
-        return (int16_t)u16(idx); //casts unsigned int into signed
+    auto to_s16 = [&](int idx) -> int16_t { 
+        return (int16_t)to_u16(idx); //casts unsigned int into signed
     };
 
     // mapping
-    out->present_position     = u16(0); // 0x38 to 0x39
-    out->present_speed        = s16(2);  // 0x3A to 0x3B
-    out->present_load         = s16(4); // 0x3C to 0x3D
+    out->present_position     = to_u16(0); // 0x38 to 0x39
+    out->present_speed        = to_s16(2);  // 0x3A to 0x3B
+    out->present_load         = to_s16(4); // 0x3C to 0x3D
     out->present_voltage_raw  = out->raw[6]; // 0x3E
     out->present_temp_c       = out->raw[7]; // 0x3F
 
@@ -459,66 +471,19 @@ bool SO101Bus::read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_
   return true;
 }
 
-
-
-// map 
-static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
-  // servo position ranges for counter clockwise rotation
-  // index 0 unused
-  constexpr auto& kRanges = SO101Bus::sid_to_pos_tic_range;
-
-  // degree limits
-  constexpr double kDegMin = 0.0;
-  constexpr double kDegMax = 180.0;
-
-  auto map_one = [&](int sid, uint16_t in) -> uint16_t {
-    // already in servo units
-    if (in > 18000u) return in;
-
-    if (sid < 1 || sid > 6) return in;
-
-    const double deg = std::clamp(in / 100.0, kDegMin, kDegMax);
-    const double t = (deg - kDegMin) / (kDegMax - kDegMin);
-
-    const auto& r = kRanges[sid];
-
-    const double pos = static_cast<double>(r.pos_min) +
-                       t * (static_cast<double>(r.pos_max - r.pos_min));
-    const long p = std::lround(pos);
-    const long lo = std::min<long>(r.pos_min, r.pos_max);
-    const long hi = std::max<long>(r.pos_min, r.pos_max);
-    return static_cast<uint16_t>(std::clamp<long>(p, std::max(0L, lo), std::min(65535L, hi)));
-  };
-
-  // map all 6 servos
-  if (id == 0 && v.size() >= 6) {
-    for (int sid = 1; sid <= 6; ++sid) {
-      v[(size_t)(sid - 1)] = map_one(sid, v[(size_t)(sid - 1)]);
-    }
-    return v;
-  }
-
-  // map a single servo
-  if (id >= 1 && id <= 6) {
-    if (!v.empty()) v[0] = map_one(id, v[0]);
-    return v;
-  }
-
-  // if 6 values , take as servos 1-6
-  if (v.size() >= 6) {
-    for (int sid = 1; sid <= 6; ++sid) {
-      v[(size_t)(sid - 1)] = map_one(sid, v[(size_t)(sid - 1)]);
-    }
-  }
-
-  return v;
-}
-
-
-//This function uses  the 'SYNC WRITE' functionality in the message protocol, which sends a single packet containing the write data for all servos instead of one packet per servo.
-
 bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms) {
   if (!ensure_connected_()) return false;
+
+  // check position is in range and return false if not
+  for (int sid : cfg_.ids) {
+    if (!calibration_.inRangeTic(pos[sid - 1], sid)) {
+      std::cout
+          << "write_all_positions() - target tick position out of range. pos="
+          << pos[sid - 1] << ", sid=" << sid << std::endl;
+      return false;
+    }
+  }
+
   const int fd = port_.fd();
   const auto& ids = cfg_.ids;
   constexpr uint8_t kBroadcastId = 0xFE;
@@ -556,106 +521,13 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
                                          &err);
   };
 
-  // servo bounds
-  // use robot_mapping(id,{0}) and robot_mapping(id,{18000}) if robot_mapping is implemented
-  auto bounds_for_id = [&](int id) -> std::pair<uint16_t, uint16_t> {
-    // fallback mapping
-    if (id < 1 || id > 6) return {0, 0};
-
-    const auto& r = SO101Bus::sid_to_pos_tic_range[(size_t)id];
-    uint16_t e0 = static_cast<uint16_t>(std::clamp<int>(r.pos_min, 0, 65535));
-    uint16_t e1 = static_cast<uint16_t>(std::clamp<int>(r.pos_max, 0, 65535));
-
-    // if robot_mapping() exists
-    const auto m0   = robot_mapping(id, std::vector<uint16_t>{0});
-    const auto m180 = robot_mapping(id, std::vector<uint16_t>{18000});
-    const bool mapping_looks_real =
-        (m0.size() == 1 && m180.size() == 1 && !(m0[0] == 0 && m180[0] == 18000));
-    if (mapping_looks_real) { e0 = m0[0]; e1 = m180[0]; }
-
-    uint16_t loB = std::min(e0, e1);
-    uint16_t hiB = std::max(e0, e1);
-
-    // apply margin
-    if (hiB > loB + 2 * kSoftMarginUnits) {
-      loB = static_cast<uint16_t>(loB + kSoftMarginUnits);
-      hiB = static_cast<uint16_t>(hiB - kSoftMarginUnits);
-    }
-    return {loB, hiB};
-  };
-
-  auto clamp_to_bounds = [&](int id, uint16_t p) -> uint16_t {
-    const auto [loB, hiB] = bounds_for_id(id);
-    return static_cast<uint16_t>(std::clamp<int>((int)p, (int)loB, (int)hiB));
-  };
-
-
-  // clamp the commanded goal
-  std::array<uint16_t, 6> goal = pos;
-  for (int j = 0; j < 6; ++j) goal[j] = clamp_to_bounds(j + 1, goal[j]);
-
   // send the final goal command
-  return send_sync(goal);
+  return send_sync(pos);
 }
 
-
-// converting TrajElement to servo position
-
-
-static uint16_t traj_value_to_ticks(double v, int joint_index_1to6) {
-
-  constexpr bool kInputIsRadians = false;
- 
-  // bad input
-  if (!std::isfinite(v)) v = 90.0;
-
-  if (std::abs(v) > 360.0) {
-    const long p = std::lround(v);
-    return static_cast<uint16_t>(std::clamp<long>(p, 0L, 65535L));
-  }
-
-  double deg = v;
-
-  // ONLY ACCEPT 0 TO 180 DEGREE ANGLES
-  if (deg < 0.0 || deg > 180.0) {
-    std::fprintf(stderr,
-                 "traj_value_to_ticks: joint %d input %.3f deg out of [0,180]; clamping\n",
-                 joint_index_1to6, deg);
-  }
-  deg = std::clamp(deg, 0.0, 180.0);
-
-  const uint16_t deg_centi =
-      static_cast<uint16_t>(std::clamp<long>(std::lround(deg * 100.0), 0L, 18000L));
-
-  const std::vector<uint16_t> mapped = robot_mapping(joint_index_1to6, std::vector<uint16_t>{deg_centi});
-  return (!mapped.empty()) ? mapped[0] : deg_centi;
-}
-
-
-static bool goals_from_traj_element(const TrajElement& e, std::array<uint16_t, 6>* out_goals) {
-  if (!out_goals) return false;
-  if (e.val.size() < 6) return false;
-
-  for (int j = 0; j < 6; ++j) {
-    (*out_goals)[j] = traj_value_to_ticks(e.val[(size_t)j],(j + 1));
-  }
-  return true;
-}
-
-
-// trajectory execution
-
-// overload for execution using a defined config
-bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj, const SO101Bus::Config& cfg) {
-  SO101Bus tmp(cfg);
-  return tmp.execute_traj_full(traj);
-}
-
-// execute a trajectory expressed as TrajElement waypoints
-// send position only sync writes
-// TrajElement.time field is used only for pacing and scheduling
-// do not write any timeor speed registers
-bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
+bool SO101Bus::execute_traj_full(const std::deque<TrajElement> &traj,
+                                 const PosUnit pos_unit)
+{
   if (traj.empty()) return true;
 
   if (!ensure_connected_()) return false;
@@ -668,8 +540,7 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
   const auto start = std::chrono::steady_clock::now();
   double max_sample_time_err_ms = 0.0;
 
-  std::array<uint16_t, 6> last_goals{};
-  //bool have_last_goals = false;
+  std::array<uint16_t, 6> last_target_pos_tic{};
 
   for (size_t i = 0; i < traj.size(); ++i) {
     const TrajElement& e = traj[i];
@@ -688,17 +559,39 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
       if (err_ms > max_sample_time_err_ms) max_sample_time_err_ms = err_ms;
     }
 
-    std::array<uint16_t, 6> goals{};
-    if (!goals_from_traj_element(e, &goals)) {
-      std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu has val.size() < 6\n", i);
-      return false;
+    // convert target position to tics
+    std::array<uint16_t, 6> target_pos_tic{};
+    for (int i{}; i < e.val.size(); ++i) {
+      switch (pos_unit) {
+            case PosUnit::RADIAN:
+              if (!calibration_.inRangePos(e.val[i], cfg_.ids[i], pos_unit)) {
+                std::cout << "target position out of range. target pos = "
+                          << e.val[i] << ", sid=" << cfg_.ids[i]
+                          << ", unit radian" << std::endl;
+                return false;
+              }
+              target_pos_tic[i]
+                = calibration_.posToTic(e.val[i], cfg_.ids[i], PosUnit::RADIAN);
+              break;
+
+            case PosUnit::DEGREE:
+              if (!calibration_.inRangePos(e.val[i], cfg_.ids[i], pos_unit)) {
+                std::cout << "target position out of range. target pos = "
+                          << e.val[i] << ", sid=" << cfg_.ids[i]
+                          << ", unit radian" << std::endl;
+                return false;
+              }
+              target_pos_tic[i]
+                = calibration_.posToTic(e.val[i], cfg_.ids[i], PosUnit::DEGREE);
+              break;
+      }
     }
 
-    if (!write_all_positions(goals, cfg_.read_timeout_ms)) {
+    if (!write_all_positions(target_pos_tic, cfg_.read_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
       return false;
     }
-    last_goals = goals;
+    last_target_pos_tic = target_pos_tic;
 
     if (cfg_.enable_state_poll) {
       std::array<ServoStateBasic, 6> st{};

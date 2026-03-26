@@ -26,8 +26,7 @@ int main(int argc, char** argv) {
     traj.push_back(TrajElement{.time= k * dt, .val={90, 45, 110, 90, 90, 0}});
   }
 
-
-  if (!bus.execute_traj_full(traj)) {
+  if (!bus.execute_traj_full(traj, PosUnit::DEGREE)) {
     std::cerr << "trajectory execution failed\n";
     return 2;
   }
