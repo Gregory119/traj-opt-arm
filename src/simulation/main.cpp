@@ -1,4 +1,3 @@
-#include "IpIpoptApplication.hpp"
 #include "simulator.hpp"
 
 // main function
