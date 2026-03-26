@@ -1,3 +1,12 @@
+cmake_minimum_required(VERSION 3.16)
+project(traj_opt_arm LANGUAGES CXX)
+
+########### build fails without this #########
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+##############################################
+
 # find libraries that should already be installed
 find_package(Threads REQUIRED)
 
@@ -44,5 +53,5 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/hardware)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/simulation)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
+# add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cartpole)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/so101_arm)

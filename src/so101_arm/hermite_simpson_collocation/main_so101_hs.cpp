@@ -1,0 +1,489 @@
+#include <iostream>
+#include <numbers>
+#include <pinocchio/parsers/mjcf.hpp>
+
+#include <ifopt/ipopt_solver.h>
+#include <ifopt/problem.h>
+
+#include "control_effort_hs_cost.hpp"
+#include "robot_dynamics_hs.hpp"
+#include "save_trajectory.hpp"
+#include "trajectory_variables.hpp"
+#include "hermite_simpson_collocation_constraints.hpp"
+#include "hs_traj_extractor.hpp"
+
+namespace pin = pinocchio;
+
+/*
+ * Create an upper and lower bound for each state vector along the trajectory.
+ */
+
+ifopt::Component::VecBound createStateBounds(const int num_state_vars,
+                                             const int state_len,
+                                             double d_max,
+                                             const Eigen::VectorXd &state_start,
+                                             const Eigen::VectorXd &state_end)
+{
+    // vector of bounds initally all zero
+    ifopt::Component::VecBound bounds;
+    // for each state vector
+    const int num_state_vecs = num_state_vars / state_len;
+    for (int i{}; i < num_state_vecs; ++i) {
+        if (i == 0) {
+            // initial state bounds
+            for (int j{}; j < state_len; ++j) {
+                bounds.push_back({state_start(j), state_start(j)});
+            }
+        } else if (i == num_state_vecs - 1) {
+            // final state bounds
+            for (int j{}; j < state_len; ++j) {
+                bounds.push_back({state_end(j), state_end(j)});
+            }
+        } else {
+            // path bounds
+
+            // bound for q0
+            bounds.push_back({-d_max, d_max});
+            // bound for q1
+            bounds.push_back({-2 * std::numbers::pi, 2 * std::numbers::pi});
+            // bound for dq0
+            bounds.push_back({-ifopt::inf, ifopt::inf});
+            // bound for dq1
+            bounds.push_back({-ifopt::inf, ifopt::inf});
+        }
+    }
+    assert(bounds.size() == num_state_vars);    
+    return bounds;
+}
+
+ifopt::Component::VecBound createMidpointStateBounds(const int num_state_vars,
+                                                     const int state_len,
+                                                     const double d_max)
+{
+    ifopt::Component::VecBound bounds ;
+    bounds.reserve(num_state_vars);
+    for (int i=0; i < num_state_vars; i += state_len) {
+        // path bounds only 
+        // no pinned endpoints at midpoints
+        bounds.push_back ({-d_max, d_max});                          // q0
+        bounds.push_back ({-2 * std::numbers::pi, 2 * std::numbers::pi}); // q1
+        bounds.push_back ({-ifopt::inf, ifopt::inf});                // dq0
+        bounds.push_back ({-ifopt::inf, ifopt::inf});                // dq1
+    }
+    assert(bounds.size() == num_state_vars);
+    return bounds;
+}
+
+ifopt::Component::VecBound createControlBounds(const int num_control_vars,
+                                               const double max_force)
+{
+    // vector of bounds all
+    ifopt::Component::VecBound bounds(num_control_vars,
+                                  {-max_force, max_force});
+    return bounds;
+}
+
+void guessStateTraj(const int state_len,
+                               const int num_segments,
+                               const Eigen::VectorXd &state_start,
+                               const Eigen::VectorXd &state_end,
+                               Eigen::VectorXd& state_col_init,
+                               Eigen::VectorXd& state_mid_init)
+{
+
+    const int num_time_pts = num_segments + 1;
+    // linearly interpolate from start state to end state
+    for (int k{}; k < num_time_pts; ++k) {
+        auto statek = state_col_init(Eigen::seqN(k * state_len, state_len));
+        const double alpha
+              = static_cast<double>(k)
+              / (num_time_pts - 1);  // trajectory progress factor
+        statek = alpha * (state_end - state_start) + state_start;
+
+        //midpoint initialization
+        if(k<num_segments){
+            auto state_mid_i = state_mid_init(Eigen::seqN(k* state_len, state_len));
+            const double alpha_mid = ((2 * k) - 1) / (2 * num_segments);
+            state_mid_i = alpha_mid * (state_start - state_end) + state_start;
+        }
+    }
+    return;
+}
+
+
+/*
+int main(int argc, char **argv)
+{
+    if (argc != 2) {
+        std::cout << "Path to model required." << std::endl;
+        return 0;
+    }
+
+    // Load the urdf model
+    const std::string mj_filename = argv[1];
+    pin::Model model;
+    pin::mjcf::buildModel(mj_filename, model);
+    std::cout << "model name: " << model.name << std::endl;
+
+    // define problem
+    ifopt::Problem nlp;
+    const double start_time = 0.0;
+    const double traj_dur = 2.0;
+    const int num_segments = 10;
+    const double dt_segment = traj_dur / num_segments;
+
+    // state bounds
+    const int state_len = 6 * 2;
+    const int num_state_vars = (num_segments + 1) * state_len;
+    const Eigen::VectorXd state_end{{std::numbers::pi / 2,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0}};
+    const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
+    ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
+                                                                state_len,
+                                                                state_start,
+                                                                state_end);
+
+    // init guess for state variables
+    auto state_init
+        = guessStateTraj(state_len, num_segments, state_start, state_end);
+    auto traj_state_vars
+        = std::make_shared<TrajectoryVariables>("traj_state_vars",
+                                                std::move(state_init),
+                                                std::move(state_bounds));
+    nlp.AddVariableSet(traj_state_vars);
+
+    // control bounds
+    const int control_len = 6;
+    const int num_control_vars = control_len * (num_segments + 1);
+    const double rated_torque_kgcm = 10;
+    const double gravity = 9.81;
+    const double max_control_force = rated_torque_kgcm * gravity / 100.0;
+    ifopt::Component::VecBound control_bounds
+        = createControlBounds(num_control_vars, max_control_force);
+
+    // init guess for control variables
+    auto control_init = Eigen::VectorXd::Zero(num_control_vars);
+    auto traj_control_vars
+        = std::make_shared<TrajectoryVariables>("traj_control_vars",
+                                                std::move(control_init),
+                                                std::move(control_bounds));
+    nlp.AddVariableSet(traj_control_vars);
+
+    // add constraints
+    const auto dyn_fn
+        = [&](const Eigen::VectorXd &state,
+              const Eigen::VectorXd &control,
+              const double time) { return dyn(state, control, time, model); };
+    const auto jac_dyn_wrt_state_fn = [&](const Eigen::VectorXd &state,
+                                          const Eigen::VectorXd &control,
+                                          const double time) {
+        return jacDynWrtState(state, control, time, model);
+    };
+    const auto jac_dyn_wrt_control_fn = [&](const Eigen::VectorXd &state,
+                                            const Eigen::VectorXd &control,
+                                            const double time) {
+        return jacDynWrtControl(state, control, time, model);
+    };
+    const int num_constraints = state_len * num_segments;
+    const auto col_constraints
+        = std::make_shared<TrapezoidalCollocationConstraints>(
+            num_constraints,
+            traj_state_vars,
+            state_len,
+            traj_control_vars,
+            control_len,
+            dt_segment,
+            dyn_fn,
+            jac_dyn_wrt_state_fn,
+            jac_dyn_wrt_control_fn);
+    nlp.AddConstraintSet(col_constraints);
+    nlp.AddCostSet(std::make_shared<ControlEffortTrapezoidalCost>(
+        "effort_cost",
+        traj_control_vars->GetName(),
+        control_len,
+        dt_segment));
+
+    nlp.PrintCurrent();
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "collocation constraint values:" << std::endl;
+    std::cout << col_constraints->GetValues().transpose() << std::endl;
+
+    // choose solver and options
+    ifopt::IpoptSolver ipopt;
+    ipopt.SetOption("tol", 1e-3);
+    ipopt.SetOption("max_iter", 3000);
+    ipopt.SetOption("max_cpu_time", 60.0);
+    // ipopt.SetOption("print_level", 5);
+    // ipopt.SetOption("print_frequency_time", 3.0);
+    ipopt.SetOption("derivative_test", "first-order");
+    ipopt.SetOption("mu_strategy", "adaptive");
+    ipopt.SetOption("output_file", "ipopt.out");
+
+    // solve
+    ipopt.Solve(nlp);
+    nlp.PrintCurrent();
+
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "collocation constraint values:" << std::endl;
+    std::cout << col_constraints->GetValues().transpose() << std::endl;
+
+    ///////////////////////////////////////////////////////////////////////
+    // Extract/create trajectories and save to files
+    //////////////////////////////////////////////////////////////////////
+    TrapezoidalTrajExtractor traj_extractor(start_time,
+                                            traj_dur,
+                                            traj_state_vars->GetValues(),
+                                            state_len,
+                                            traj_control_vars->GetValues(),
+                                            control_len,
+                                            dt_segment,
+                                            model,
+                                            dyn);
+    saveDiscreteJointStateTrajCsv(
+        "collocation-state-traj-hermite-simpson-so101.csv",
+        traj_extractor.createCollocationStateTraj(model));
+    saveDiscreteJointDataTrajCsv(
+        "collocation-ctrl-traj-hermite-simpson-so101.csv",
+        traj_extractor.createCollocationCtrlTraj(model));
+
+    // save sample trajectory to file
+    const double sample_period = 0.020;
+    saveDiscreteJointStateTrajCsv(
+        "sample-state-traj-hermite-simpson-so101.csv",
+        traj_extractor.createSampledStateTraj(sample_period));
+    saveDiscreteJointDataTrajCsv(
+        "sample-ctrl-traj-hermite-simpson-so101.csv",
+        traj_extractor.createSampledCtrlTraj(sample_period));
+
+    return 0;
+}
+
+*/
+
+
+int main(int argc, char **argv)
+{
+    if (argc != 2) {
+        std::cout << "Path to model required." << std::endl;
+        return 0;
+    }
+
+    // Load the urdf model
+    const std::string mj_filename = argv[1];
+    pin::Model model;
+    pin::mjcf::buildModel(mj_filename, model);
+    std::cout << "model name: " << model.name << std::endl;
+
+    // define problem
+    ifopt::Problem nlp;
+    const double traj_dur = 2.0;
+    const int num_segments = 10;
+    const double dt_segment = traj_dur / num_segments;
+    const double start_time = 0.0;
+
+    // final q0 position
+    const double d = 0.8;
+
+    // state bounds
+//  const double d_max = 2 * d;
+    const int state_len = 6 * 2;
+    const int num_state_vars = (num_segments + 1) * state_len;
+    const Eigen::VectorXd state_end{{std::numbers::pi / 2,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0,
+                                     0.0}};
+    // const Eigen::VectorXd state_start{{d, std::numbers::pi, 0.0, 0.0}};
+    const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
+    ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
+                                                                state_len,
+                                                                d_max,
+                                                                state_start,
+                                                                state_end);
+
+    //initialize knot points and midpoints
+    Eigen::VectorXd state_col_init= Eigen::VectorXd::Zero((num_segments+1) * state_len);
+    Eigen::VectorXd state_mid_init= Eigen::VectorXd::Zero(num_segments * state_len);
+
+    guessStateTraj(state_len, num_segments, state_start, state_end, state_col_init, state_mid_init);
+
+    auto traj_state_vars
+        = std::make_shared<TrajectoryVariables>("traj_state_vars",
+                                                std::move(state_col_init),
+                                                std::move(state_bounds));
+    nlp.AddVariableSet(traj_state_vars);
+
+    // control bounds
+    const int control_len = 6;
+    const int num_control_vars = control_len * (num_segments + 1);
+    const double max_control_force = 100;
+    ifopt::Component::VecBound control_bounds
+        = createControlBounds(num_control_vars, max_control_force);
+
+    // init guess for control variables
+    auto control_init = Eigen::VectorXd::Zero(num_control_vars);
+    auto traj_control_vars
+        = std::make_shared<TrajectoryVariables>("traj_control_vars",
+                                                std::move(control_init),
+                                                std::move(control_bounds));
+    nlp.AddVariableSet(traj_control_vars);
+
+    // midpoint state variables
+    // one per segment
+    const int num_state_mid_vars = num_segments * state_len;
+    auto state_mid_bounds = createMidpointStateBounds(num_state_mid_vars, state_len, d_max);
+    //auto state_mid_init = Eigen::VectorXd::Zero(num_state_mid_vars);
+
+    auto traj_state_mid_vars = std::make_shared<TrajectoryVariables>(
+        "traj_state_mid_vars",
+        std::move(state_mid_init),
+        std::move(state_mid_bounds));
+    nlp.AddVariableSet(traj_state_mid_vars);
+
+    // midpoint control variables
+    // one per segment
+    const int num_control_mid_vars = num_segments * control_len;
+    auto control_mid_bounds = createControlBounds(num_control_mid_vars, max_control_force);
+    auto control_mid_init = Eigen::VectorXd::Zero(num_control_mid_vars);
+    auto traj_control_mid_vars = std::make_shared<TrajectoryVariables>(
+        "traj_control_mid_vars",
+        std::move(control_mid_init),
+        std::move(control_mid_bounds));
+    nlp.AddVariableSet(traj_control_mid_vars);
+
+    // add constraints
+    const auto dyn_fn = [&](const Eigen::VectorXd &state,
+                            const Eigen::VectorXd &control,
+                            const double time) {
+        return dyn(state, control, time, model);
+    };
+    const auto jac_dyn_wrt_state_fn = [&](const Eigen::VectorXd &state,
+                                          const Eigen::VectorXd &control,
+                                          const double time) {
+        return jacDynWrtState(state, control, time, model);
+    };
+    const auto jac_dyn_wrt_control_fn = [&](const Eigen::VectorXd &state,
+                                            const Eigen::VectorXd &control,
+                                            const double time) {
+        return jacDynWrtControl(state, control, time, model);
+    };
+    const int num_hermite_constraints = state_len * num_segments;
+    const int num_simpson_constraints = state_len * num_segments;
+
+    const auto hermite_constraints
+        = std::make_shared<HermiteMidpointConstraints>(
+            num_hermite_constraints,
+            traj_state_vars,
+            state_len,
+            traj_control_vars,
+            traj_state_mid_vars,
+            traj_control_mid_vars,
+            control_len,
+            dt_segment,
+            dyn_fn,
+            jac_dyn_wrt_state_fn,
+            jac_dyn_wrt_control_fn);
+
+    const auto simpson_constraints
+        = std::make_shared<SimpsonDefectConstraints>(
+            num_simpson_constraints,
+            traj_state_vars,
+            state_len,
+            traj_control_vars,
+            traj_state_mid_vars,
+            traj_control_mid_vars,
+            control_len,
+            dt_segment,
+            dyn_fn,
+            jac_dyn_wrt_state_fn,
+            jac_dyn_wrt_control_fn);
+
+    nlp.AddConstraintSet(hermite_constraints);
+    nlp.AddConstraintSet(simpson_constraints);
+    nlp.AddCostSet(std::make_shared<ControlEffortHermSimpCost>(
+        "effort_cost",
+        traj_control_vars->GetName(),
+        traj_control_mid_vars->GetName(),
+        control_len,
+        dt_segment));
+
+    nlp.PrintCurrent();
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "Hermite midpoint constraint values:" << std::endl;
+    std::cout << hermite_constraints->GetValues().transpose() << std::endl;
+
+    std::cout << "Simpson defect constraint values:" << std::endl;
+    std::cout << simpson_constraints->GetValues().transpose() << std::endl;
+
+    // choose solver and options
+    ifopt::IpoptSolver ipopt;
+    ipopt.SetOption("tol", 1e-3);
+    ipopt.SetOption("max_iter", 3000);
+    ipopt.SetOption("max_cpu_time", 60.0);
+    ipopt.SetOption("print_level", 5);
+    ipopt.SetOption("print_frequency_time", 3.0);
+    ipopt.SetOption("derivative_test", "first-order");
+    ipopt.SetOption("mu_strategy", "adaptive");
+    ipopt.SetOption("output_file", "ipopt.out");
+
+    // solve
+    ipopt.Solve(nlp);
+    nlp.PrintCurrent();
+
+    std::cout << "state variables: " << std::endl;
+    std::cout << traj_state_vars->GetValues().transpose() << std::endl;
+    std::cout << "control variables: " << std::endl;
+    std::cout << traj_control_vars->GetValues().transpose() << std::endl;
+    std::cout << "Hermite midpoint constraint values:" << std::endl;
+    std::cout << hermite_constraints->GetValues().transpose() << std::endl;
+
+    std::cout << "Simpson defect constraint values:" << std::endl;
+    std::cout << simpson_constraints->GetValues().transpose() << std::endl;
+
+    HermSimpTrajExtractor traj_extractor(start_time,
+                                            traj_dur,
+                                            traj_state_vars->GetValues(),
+                                            traj_state_mid_vars->GetValues(),
+                                            state_len,
+                                            traj_control_vars->GetValues(),
+                                            traj_control_mid_vars->GetValues(),
+                                            control_len,
+                                            dt_segment,
+                                            model,
+                                            dyn);
+    saveDiscreteJointStateTrajCsv(
+        "collocation-state-traj-hs-cartpole.csv",
+        traj_extractor.createCollocationStateTraj(model));
+    saveDiscreteJointDataTrajCsv(
+        "collocation-ctrl-traj-hs-cartpole.csv",
+        traj_extractor.createCollocationCtrlTraj(model));
+
+    return 0;
+
+}

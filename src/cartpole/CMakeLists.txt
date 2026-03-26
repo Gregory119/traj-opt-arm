@@ -1,1 +1,2 @@
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/trapezoidal_collocation)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/HermiteSimpson_collocation)

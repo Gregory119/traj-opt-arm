@@ -52,3 +52,28 @@ T interp_linear(const T &xi, const T &xf, const double dt_max, const double dt)
 
     return xi + dt / dt_max * (xf - xi);
 }
+
+
+template <typename T>
+T interp_quad_midpoint(const T &x0,
+                       const T &xc,
+                       const T &x1,
+                       const double dt_max,
+                       const double dt)
+{
+    if ((dt < 0.0) || (dt > dt_max)) {
+        std::ostringstream os;
+        os << "interp_quad_midpoint(). dt out of bounds. dt_max = "
+           << dt_max << ", dt = " << dt;
+        throw std::invalid_argument(os.str());
+    }
+
+    const double s = dt / dt_max;
+
+    // Lagrange basis at s = 0, 0.5, 1
+    const double L0 = 2.0 * (s - 0.5) * (s - 1.0);
+    const double Lc = -4.0 * s * (s - 1.0);
+    const double L1 = 2.0 * s * (s - 0.5);
+
+    return L0 * x0 + Lc * xc + L1 * x1;
+}
