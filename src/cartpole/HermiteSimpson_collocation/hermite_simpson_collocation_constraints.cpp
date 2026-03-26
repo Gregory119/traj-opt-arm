@@ -156,7 +156,7 @@ void HermiteMidpointConstraints::FillJacobianWrt(
 
     // k indexes a trajectory segment, and j indexes the neighboring knot block
     // used for that segment (j = k or j = k+1)
-    // For each segment, this class contributes only the Hermite midpoint vector c_mid
+    // For each segment, this class contributes only the Hermite midpoint constraint vector c_mid
     // so the row offset is k * m_state_len
     // Knot variables use column block j
     // Midpoint variables use column block k
