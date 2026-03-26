@@ -11,6 +11,15 @@ int main(int argc, char** argv) {
   if (argc >= 2) cfg.device = argv[1]; // /dev/ttyACM0
   cfg.record_timing_stats = true;
 
+  cfg.sid_to_pos_tic_range = {{
+      {1, ServoPosRange{2618, 5146}},
+      {2, ServoPosRange{3372, 5698}},
+      {3, ServoPosRange{2557, 650}},
+      {4, ServoPosRange{0, 1017}},
+      {5, ServoPosRange{5746, 1942}},
+      {6, ServoPosRange{3469, 834}},
+  }};
+
   SO101Bus bus(cfg);
   if (!bus.connect()) {
     std::cerr << "failed to connect to " << cfg.device << "\n";

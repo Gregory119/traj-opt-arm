@@ -1,5 +1,6 @@
 #include "so101_bus.hpp"
 
+#include <cassert>
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -78,22 +79,15 @@ static inline uint8_t hi(uint16_t v) { return static_cast<uint8_t>((v >> 8) & 0x
 
 
 // SO101Bus class handling lifecycle / connection
-const std::vector<ServoPosRange> SO101Bus::sid_to_pos_tic_range = {{
-    {0, 0},        // unused id 0
-    {2618, 5146},  // id 1
-    {3372, 5698},  // id 2
-    {2557, 650},   // id 3
-    {0, 1017},     // id 4
-    {5746, 1942},  // id 5
-    {3469, 834},   //
-}};
 
 SO101Bus::SO101Bus() : SO101Bus(Config{}) {} //delegating default constructor for SO101_Bus and configuration classes
 
 SO101Bus::SO101Bus(Config cfg)
     : cfg_(std::move(cfg))
-    , calibration_{sid_to_pos_tic_range}
-{}
+    , calibration_{cfg_.sid_to_pos_tic_range}
+{
+    assert(cfg_.sid_to_pos_tic_range.size() == cfg_.ids.size());
+}
 
 void SO101Bus::set_config(const Config& cfg) { //setter for the particular configuration
   cfg_ = cfg;

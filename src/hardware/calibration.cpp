@@ -1,23 +1,38 @@
 #include "calibration.hpp"
 
+#include <cassert>
+#include <iostream>
 #include <numbers>
 
 static const int g_tic_p_rev = 4096;
 
-Calibration::Calibration(const std::vector<ServoPosRange> &pos_tic_ranges)
+Calibration::Calibration(const std::map<int, ServoPosRange> &pos_tic_ranges)
     : m_pos_tic_ranges{pos_tic_ranges}
 {}
 
 bool Calibration::inRangeTic(const int pos_tic, const int sid) const
 {
-    return (pos_tic > m_pos_tic_ranges[sid].pos_min)
-           && (pos_tic < m_pos_tic_ranges[sid].pos_max);
+    if (!m_pos_tic_ranges.contains(sid)) {
+        std::cout << "Calibration::inRangeTic() - sid does not exist in "
+                     "position ranges. sid = "
+                  << sid << std::endl;
+        return false;
+    }
+    const auto range = m_pos_tic_ranges.find(sid)->second;
+    return (pos_tic > range.pos_min) && (pos_tic < range.pos_max);
 }
 
 bool Calibration::inRangePos(const double pos,
                              const int sid,
                              const PosUnit unit) const
 {
+    if (!m_pos_tic_ranges.contains(sid)) {
+        std::cout << "Calibration::inRangePos() - sid does not exist in "
+                     "position ranges. sid = "
+                  << sid << std::endl;
+        return false;
+    }
+
     // keep position in specified units for convenient debug logs by converting
     // tic range to unit range
     double unit_p_tic{};
@@ -30,10 +45,9 @@ bool Calibration::inRangePos(const double pos,
             unit_p_tic = 360.0 / g_tic_p_rev;
             break;
     }
-    const double pos_max_unit
-        = (m_pos_tic_ranges[sid].pos_max - getZeroTic(sid)) * unit_p_tic;
-    const double pos_min_unit
-        = (m_pos_tic_ranges[sid].pos_min - getZeroTic(sid)) * unit_p_tic;
+    const auto range = m_pos_tic_ranges.find(sid)->second;
+    const double pos_max_unit = (range.pos_max - getZeroTic(sid)) * unit_p_tic;
+    const double pos_min_unit = (range.pos_min - getZeroTic(sid)) * unit_p_tic;
     return (pos > pos_min_unit) && (pos < pos_max_unit);
 }
 
@@ -58,5 +72,12 @@ int Calibration::posToTic(const double pos,
 
 int Calibration::getZeroTic(const int sid) const
 {
-    return (m_pos_tic_ranges[sid].pos_max + m_pos_tic_ranges[sid].pos_min) / 2;
+    if (!m_pos_tic_ranges.contains(sid)) {
+        std::cout << "Calibration::getZeroTic() - sid does not exist in "
+                     "position ranges. sid = "
+                  << sid << std::endl;
+        return false;
+    }
+    const auto range = m_pos_tic_ranges.find(sid)->second;
+    return (range.pos_max + range.pos_min) / 2;
 }

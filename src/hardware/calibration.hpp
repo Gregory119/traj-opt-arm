@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vector>
+#include <map>
 
 // servo position unit ranges
 struct ServoPosRange
@@ -19,7 +19,7 @@ class Calibration
 {
 public:
     // todo: change this vector to a map of sid to range
-    Calibration(const std::vector<ServoPosRange> &pos_tic_ranges);
+    Calibration(const std::map<int, ServoPosRange> &pos_tic_ranges);
 
     bool inRangeTic(const int pos_tic, const int sid) const;
 
@@ -41,5 +41,5 @@ private:
     // get the zero radian or degree position in tics
     int getZeroTic(const int sid) const;
 
-    const std::vector<ServoPosRange> &m_pos_tic_ranges;
+    const std::map<int, ServoPosRange> &m_pos_tic_ranges;
 };

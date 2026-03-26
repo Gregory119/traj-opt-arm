@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -34,12 +35,11 @@ public:
         uint8_t check_sum;
   };
 
-    static const std::vector<ServoPosRange> sid_to_pos_tic_range;
-
   // configuration
   struct Config {
     std::string device{"/dev/ttyACM0"};
     std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
+      std::map<int, ServoPosRange> sid_to_pos_tic_range;
 
     //flags
     bool ping_on_connect{true};
