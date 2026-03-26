@@ -149,7 +149,7 @@ void HermiteMidpointConstraints::FillJacobianWrt(
     // insertions when constructing the final sparse jacobian matrix
     std::vector<Eigen::Triplet<double>> triplet_list;
     const int var_type_len = getVarTypeLen(var_type);
-    const int num_nonzero_submatrices = 1;
+    const int num_nonzero_submatrices = 2;
     const int num_defect_vec_eqns = m_num_segments;
     triplet_list.reserve(m_state_len * var_type_len * num_nonzero_submatrices
                          * num_defect_vec_eqns);
