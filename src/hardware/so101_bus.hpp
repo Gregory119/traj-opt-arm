@@ -39,7 +39,7 @@ public:
         uint8_t check_sum;
   };
 
-  inline static constexpr std::array<ServoPosRange, 7> tick_Pos_Range_By_Id{{
+  inline static constexpr std::array<ServoPosRange, 7> sid_to_pos_tic_range{{
       {0, 0},  // unused id 0
       {2618, 5146}, // id 1
       {3372, 5698},  // id 2
@@ -49,19 +49,17 @@ public:
       {3469,  834}, //
   }};
 
-  // configuration for port object
+  // configuration
   struct Config {
     std::string device{"/dev/ttyACM0"};
     std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
 
     //flags
     bool ping_on_connect{true};
-    bool enable_status_poll{false}; 
+    bool enable_state_poll{false}; 
     bool record_timing_stats{false};
 
-    int status_read_timeout_ms{25};
     int read_timeout_ms{1};
-    int final_settle_ms{1500};
   };
 
 

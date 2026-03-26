@@ -465,7 +465,7 @@ bool SO101Bus::read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_
 static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
   // servo position ranges for counter clockwise rotation
   // index 0 unused
-  constexpr auto& kRanges = SO101Bus::tick_Pos_Range_By_Id;
+  constexpr auto& kRanges = SO101Bus::sid_to_pos_tic_range;
 
   // degree limits
   constexpr double kDegMin = 0.0;
@@ -562,7 +562,7 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
     // fallback mapping
     if (id < 1 || id > 6) return {0, 0};
 
-    const auto& r = SO101Bus::tick_Pos_Range_By_Id[(size_t)id];
+    const auto& r = SO101Bus::sid_to_pos_tic_range[(size_t)id];
     uint16_t e0 = static_cast<uint16_t>(std::clamp<int>(r.pos_min, 0, 65535));
     uint16_t e1 = static_cast<uint16_t>(std::clamp<int>(r.pos_max, 0, 65535));
 
@@ -700,9 +700,9 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
     }
     last_goals = goals;
 
-    if (cfg_.enable_status_poll) {
+    if (cfg_.enable_state_poll) {
       std::array<ServoStateBasic, 6> st{};
-      if (!read_all_states(&st, cfg_.status_read_timeout_ms)) {
+      if (!read_all_states(&st, cfg_.read_timeout_ms)) {
         std::fprintf(stderr,
                      "execute_traj_full(deque): read_all_states failed after waypoint %zu\n",
                      i);
@@ -711,17 +711,12 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
     }
       
   }
+
   if (cfg_.record_timing_stats) {
   std::fprintf(stderr, //print sample error, will convert all print statements to std::cout later
              "max sample time error = %.3f ms\n",
              max_sample_time_err_ms);
   }
-
-  if (cfg_.final_settle_ms > 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.final_settle_ms));
-  }
-
-
 
   return true;
 }
