@@ -301,9 +301,9 @@ void guessStateTraj(const int state_len,
 
         //midpoint initialization
         if(k<num_segments){
-            auto state_mid_i = state_mid_init(Eigen::seqN(k* state_len, state_len));
+            auto state_mid_k = state_mid_init(Eigen::seqN(k* state_len, state_len));
             alpha_mid = (static_cast<double>(k) + 0.5) / num_segments
-            state_mid_i = alpha_mid * (state_start - state_end) + state_start;
+            state_mid_k = alpha_mid * (state_start - state_end) + state_start;
         }
     }
     return;
