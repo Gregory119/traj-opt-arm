@@ -592,7 +592,6 @@ int main(int argc, char **argv)
     // one per segment
     const int num_state_mid_vars = num_segments * state_len;
     auto state_mid_bounds = createMidpointStateBounds(num_state_mid_vars, state_len, d_max);
-    //auto state_mid_init = Eigen::VectorXd::Zero(num_state_mid_vars);
 
     auto traj_state_mid_vars = std::make_shared<TrajectoryVariables>(
         "traj_state_mid_vars",
