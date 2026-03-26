@@ -64,9 +64,9 @@ def plot_state_traj(path_collocation_state_traj: Path,
 
             # plot bounds
             if not df_low.empty:
-                ax.plot(df_low.time, df_low.iloc[:, 1], 'D', label="min.".format(joint_label[i], j))
+                ax.plot(df_low.time, df_low.iloc[:, 1], 'D', label="min.")
             if not df_high.empty:
-                ax.plot(df_high.time, df_high.iloc[:, 1], 'D', label="max.".format(joint_label[i], j))
+                ax.plot(df_high.time, df_high.iloc[:, 1], 'D', label="max.")
 
         ax.set_title(f"Target {algorithm_name} Collocation Joint {joint_title_names[i]} Trajectory")
         ax.set_xlabel("time [s]")
@@ -136,20 +136,46 @@ def plot_state_traj_sim_err(path_sample_state_traj: Path,
     return fig_ax_tuples
 
 
-def plot_ctrl_traj(path_collocation_ctrl_traj,
-                   path_sample_ctrl_traj,
+def plot_ctrl_traj(path_collocation_ctrl_traj: Path,
+                   path_sample_ctrl_traj: Path,
+                   path_ctrl_bounds_traj: Path,
                    algorithm_name):
     df_coll_ctrl_traj = pd.read_csv(path_collocation_ctrl_traj)
     df_sample_ctrl_traj = pd.read_csv(path_sample_ctrl_traj)
+    df_ctrl_bounds_traj = pd.read_csv(path_ctrl_bounds_traj)
 
-    # each row is: [time, u] where u is a row vector with as many elements as
-    # there are control input elements (no more than the number of joints)
-    num_ctrls = len(df_coll_ctrl_traj.columns) - 1
+    # For trajectory data each row is: [time, u] where u is a row vector with as
+    # many elements as there are control input elements (no more than the number
+    # of joints). For bounds data each row is [time, u(0)_low, u(0)_high, ... ,
+    # u(n-1)_low, u(n-1)_high], where n is the number of joints.
+    ctrl_len = len(df_coll_ctrl_traj.columns) - 1
     
     fig, ax = plt.subplots()
-    for i in range(num_ctrls):
+    for i in range(ctrl_len):
         line, = ax.plot(df_coll_ctrl_traj.time, df_coll_ctrl_traj.iloc[:, i+1], 'o', label="u[{}]".format(i))
         ax.plot(df_sample_ctrl_traj.time, df_sample_ctrl_traj.iloc[:, i+1], color=line.get_color())
+
+        # Only plot the bounds (path and ends) once (same for every joint)
+        if i != ctrl_len-1:
+            continue
+
+        inf = 1e6
+        col_low = "x{}_low".format(i)
+        df_low = df_ctrl_bounds_traj[["time", col_low]]
+        # remove large values in magnitude
+        df_low = df_low[df_low[col_low] >= -inf]
+
+        col_high = "x{}_high".format(i)
+        df_high = df_ctrl_bounds_traj[["time", col_high]]
+        # remove large values in magnitude
+        df_high = df_high[df_high[col_high] <= inf]
+
+        # plot bounds
+        if not df_low.empty:
+            ax.plot(df_low.time, df_low.iloc[:, 1], 'D', label="min.")
+        if not df_high.empty:
+            ax.plot(df_high.time, df_high.iloc[:, 1], 'D', label="max.")
+
     ax.set_title(f"{algorithm_name} Collocation Joint Control Trajectory")
     ax.set_xlabel("time [s]")
     ax.grid(True)
@@ -184,17 +210,18 @@ def main():
         algorithm_name=args.algorithm
     )
 
-    # fig_ax_tuples += plot_state_traj_sim_err(
-    #     path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
-    #     path_sim_state_traj = args.traj_data_dir / filename_sim_state_traj,
-    #     algorithm_name=args.algorithm
-    # )
+    fig_ax_tuples += plot_state_traj_sim_err(
+        path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
+        path_sim_state_traj = args.traj_data_dir / filename_sim_state_traj,
+        algorithm_name=args.algorithm
+    )
     
-    # fig_ax_tuples += plot_ctrl_traj(
-    #     path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
-    #     path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
-    #     algorithm_name=args.algorithm
-    # )
+    fig_ax_tuples += plot_ctrl_traj(
+        path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
+        path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
+        path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
+        algorithm_name=args.algorithm
+    )
     
     plt.show()
 
