@@ -267,7 +267,7 @@ ifopt::Component::Jacobian
     }
 
     const bool left = (j == k);
-    ifopt::Component::Jacobian A
+    ifopt::Component::Jacobian dfj_dxj
         = m_jac_dyn_wrt_state_fn(state, control, time);
 
     ifopt::Component::Jacobian I(m_state_len, m_state_len);
@@ -276,7 +276,7 @@ ifopt::Component::Jacobian
     const double s_mid = left ? -1.0 : +1.0;
 
     ifopt::Component::Jacobian dcm_dx
-        = (-0.5) * I + (s_mid * (h / 8.0)) * A;
+        = (-0.5) * I + (s_mid * (h / 8.0)) * dfj_dxj;
 
     return dcm_dx;
 }
@@ -566,7 +566,7 @@ ifopt::Component::Jacobian
     }
 
     const bool left = (j == k);
-    ifopt::Component::Jacobian A
+    ifopt::Component::Jacobian dfj_dxj
         = m_jac_dyn_wrt_state_fn(state, control, time);
 
     ifopt::Component::Jacobian I(m_state_len, m_state_len);
@@ -575,7 +575,7 @@ ifopt::Component::Jacobian
     const double s_def_I = left ? -1.0 : +1.0;
 
     ifopt::Component::Jacobian dcd_dx
-        = (s_def_I) * I + (-(h / 6.0)) * A;
+        = (s_def_I) * I + (-(h / 6.0)) * dfj_dxj;
 
     return dcd_dx;
 }
