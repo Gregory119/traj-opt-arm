@@ -72,8 +72,7 @@ Eigen::VectorXd HermiteMidpointConstraints::GetValues() const
     const double h = m_dt_segment;
 
     for (int k{}; k < m_num_segments; ++k) {
-        const auto xk
-            = state_vars(Eigen::seqN(k * m_state_len, m_state_len));
+        const auto xk = state_vars(Eigen::seqN(k * m_state_len, m_state_len));
         const auto uk
             = control_vars(Eigen::seqN(k * m_control_len, m_control_len));
         const double tk = k * m_dt_segment;
@@ -114,11 +113,9 @@ void HermiteMidpointConstraints::FillJacobianBlock(
     } else if (var_set == m_ctrl_mid_vars->GetName()) {
         FillJacobianWrt(VariableType::CONTROL_MID, jac_block);
     }
-
 }
 
-int HermiteMidpointConstraints::getVarTypeLen(
-    const VariableType var_type) const
+int HermiteMidpointConstraints::getVarTypeLen(const VariableType var_type) const
 {
     switch (var_type) {
         case VariableType::STATE:
@@ -143,7 +140,8 @@ void HermiteMidpointConstraints::FillJacobianWrt(
     const Eigen::VectorXd state_mid_vars = m_state_mid_vars->GetValues();
     const Eigen::VectorXd control_mid_vars = m_ctrl_mid_vars->GetValues();
 
-    const double h = m_dt_segment; //will probably just rename m_dt_segment later
+    const double h
+        = m_dt_segment;  // will probably just rename m_dt_segment later
 
     // use list of triplets to simplify and avoid costly random
     // insertions when constructing the final sparse jacobian matrix
@@ -156,28 +154,33 @@ void HermiteMidpointConstraints::FillJacobianWrt(
 
     // k indexes a trajectory segment, and j indexes the neighboring knot block
     // used for that segment (j = k or j = k+1)
-    // For each segment, this class contributes only the Hermite midpoint constraint vector c_mid
-    // so the row offset is k * m_state_len
-    // Knot variables use column block j
-    // Midpoint variables use column block k
+    // For each segment, this class contributes only the Hermite midpoint
+    // constraint vector c_mid so the row offset is k * m_state_len Knot
+    // variables use column block j Midpoint variables use column block k
     const int k_max = m_num_segments;
 
     for (size_t k{}; k < k_max; ++k) {
         for (size_t j = k; j < k + 2; ++j) {
-
             const bool is_mid = (var_type == VariableType::STATE_MID
-                     || var_type == VariableType::CONTROL_MID);
-            // for midpoint var sets, there is only one variable block per segment index k not per knot index j
-            // for knot var sets use index j
+                                 || var_type == VariableType::CONTROL_MID);
+            // for midpoint var sets, there is only one variable block per
+            // segment index k not per knot index j for knot var sets use index
+            // j
             const size_t col_idx = is_mid ? k : j;
 
-            auto statej = is_mid ? state_mid_vars(Eigen::seqN(k * m_state_len, m_state_len))
-                     : state_vars(Eigen::seqN(j * m_state_len, m_state_len));
-            auto controlj = is_mid ? control_mid_vars(Eigen::seqN(k * m_control_len, m_control_len))
-                       : control_vars(Eigen::seqN(j * m_control_len, m_control_len));
+            auto statej
+                = is_mid
+                      ? state_mid_vars(
+                            Eigen::seqN(k * m_state_len, m_state_len))
+                      : state_vars(Eigen::seqN(j * m_state_len, m_state_len));
+            auto controlj
+                = is_mid ? control_mid_vars(
+                               Eigen::seqN(k * m_control_len, m_control_len))
+                         : control_vars(
+                               Eigen::seqN(j * m_control_len, m_control_len));
 
             const double tj = is_mid ? ((static_cast<double>(k) + 0.5) * h)
-                         : (m_dt_segment * j);
+                                     : (m_dt_segment * j);
 
             // defects increment for each row
             const int row_start = k * m_state_len;
@@ -203,14 +206,13 @@ void HermiteMidpointConstraints::FillJacobianWrt(
     jac_block.setFromTriplets(triplet_list.cbegin(), triplet_list.cend());
 }
 
-ifopt::Component::Jacobian
-    HermiteMidpointConstraints::jacConstraintsWrtVar(
-        const VariableType var_type,
-        const size_t k,
-        const size_t j,
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time) const
+ifopt::Component::Jacobian HermiteMidpointConstraints::jacConstraintsWrtVar(
+    const VariableType var_type,
+    const size_t k,
+    const size_t j,
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time) const
 {
     switch (var_type) {
         case VariableType::STATE:
@@ -250,13 +252,12 @@ ifopt::Component::Jacobian
     return Z;
 }
 
-ifopt::Component::Jacobian
-    HermiteMidpointConstraints::jacConstraintsWrtState(
-        const size_t k,
-        const size_t j,
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time) const
+ifopt::Component::Jacobian HermiteMidpointConstraints::jacConstraintsWrtState(
+    const size_t k,
+    const size_t j,
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time) const
 {
     const double h = m_dt_segment;
 
@@ -281,13 +282,12 @@ ifopt::Component::Jacobian
     return dcm_dx;
 }
 
-ifopt::Component::Jacobian
-    HermiteMidpointConstraints::jacConstraintsWrtControl(
-        const size_t k,
-        const size_t j,
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time) const
+ifopt::Component::Jacobian HermiteMidpointConstraints::jacConstraintsWrtControl(
+    const size_t k,
+    const size_t j,
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time) const
 {
     const double h = m_dt_segment;
 
@@ -307,11 +307,9 @@ ifopt::Component::Jacobian
     return dcm_du;
 }
 
-
 /////////////////////////////////////////////////////////////
 // SimpsonDefectConstraints
 /////////////////////////////////////////////////////////////
-
 
 SimpsonDefectConstraints::SimpsonDefectConstraints(
     const int num_constraints,
@@ -361,8 +359,7 @@ Eigen::VectorXd SimpsonDefectConstraints::GetValues() const
     const double h = m_dt_segment;
 
     for (int k{}; k < m_num_segments; ++k) {
-        const auto xk
-            = state_vars(Eigen::seqN(k * m_state_len, m_state_len));
+        const auto xk = state_vars(Eigen::seqN(k * m_state_len, m_state_len));
         const auto uk
             = control_vars(Eigen::seqN(k * m_control_len, m_control_len));
         const double tk = k * m_dt_segment;
@@ -407,11 +404,9 @@ void SimpsonDefectConstraints::FillJacobianBlock(
     } else if (var_set == m_ctrl_mid_vars->GetName()) {
         FillJacobianWrt(VariableType::CONTROL_MID, jac_block);
     }
-
 }
 
-int SimpsonDefectConstraints::getVarTypeLen(
-    const VariableType var_type) const
+int SimpsonDefectConstraints::getVarTypeLen(const VariableType var_type) const
 {
     switch (var_type) {
         case VariableType::STATE:
@@ -436,7 +431,8 @@ void SimpsonDefectConstraints::FillJacobianWrt(
     const Eigen::VectorXd state_mid_vars = m_state_mid_vars->GetValues();
     const Eigen::VectorXd control_mid_vars = m_ctrl_mid_vars->GetValues();
 
-    const double h = m_dt_segment; //will probably just rename m_dt_segment later
+    const double h
+        = m_dt_segment;  // will probably just rename m_dt_segment later
 
     // use list of triplets to simplify and avoid costly random
     // insertions when constructing the final sparse jacobian matrix
@@ -449,28 +445,33 @@ void SimpsonDefectConstraints::FillJacobianWrt(
 
     // k indexes a trajectory segment, and j indexes the neighboring knot block
     // used for that segment (j = k or j = k+1)
-    // For each segment, this class contributes only the Simpson defect vector c_def,
-    // so the row offset is k * m_state_len.
-    // knot variables use column block j
-    // midpoint variables use column block k
+    // For each segment, this class contributes only the Simpson defect vector
+    // c_def, so the row offset is k * m_state_len. knot variables use column
+    // block j midpoint variables use column block k
     const int k_max = m_num_segments;
 
     for (size_t k{}; k < k_max; ++k) {
         for (size_t j = k; j < k + 2; ++j) {
-
             const bool is_mid = (var_type == VariableType::STATE_MID
-                     || var_type == VariableType::CONTROL_MID);
-            // for midpoint var sets, there is only one variable block per segment index k not per knot index j
-            // for knot var sets use index j
+                                 || var_type == VariableType::CONTROL_MID);
+            // for midpoint var sets, there is only one variable block per
+            // segment index k not per knot index j for knot var sets use index
+            // j
             const size_t col_idx = is_mid ? k : j;
 
-            auto statej = is_mid ? state_mid_vars(Eigen::seqN(k * m_state_len, m_state_len))
-                     : state_vars(Eigen::seqN(j * m_state_len, m_state_len));
-            auto controlj = is_mid ? control_mid_vars(Eigen::seqN(k * m_control_len, m_control_len))
-                       : control_vars(Eigen::seqN(j * m_control_len, m_control_len));
+            auto statej
+                = is_mid
+                      ? state_mid_vars(
+                            Eigen::seqN(k * m_state_len, m_state_len))
+                      : state_vars(Eigen::seqN(j * m_state_len, m_state_len));
+            auto controlj
+                = is_mid ? control_mid_vars(
+                               Eigen::seqN(k * m_control_len, m_control_len))
+                         : control_vars(
+                               Eigen::seqN(j * m_control_len, m_control_len));
 
             const double tj = is_mid ? ((static_cast<double>(k) + 0.5) * h)
-                         : (m_dt_segment * j);
+                                     : (m_dt_segment * j);
 
             // defects increment for each row
             const int row_start = static_cast<int>(k) * m_state_len;
@@ -496,14 +497,13 @@ void SimpsonDefectConstraints::FillJacobianWrt(
     jac_block.setFromTriplets(triplet_list.cbegin(), triplet_list.cend());
 }
 
-ifopt::Component::Jacobian
-    SimpsonDefectConstraints::jacConstraintsWrtVar(
-        const VariableType var_type,
-        const size_t k,
-        const size_t j,
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time) const
+ifopt::Component::Jacobian SimpsonDefectConstraints::jacConstraintsWrtVar(
+    const VariableType var_type,
+    const size_t k,
+    const size_t j,
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time) const
 {
     const double h = m_dt_segment;
 
@@ -523,8 +523,7 @@ ifopt::Component::Jacobian
 
             ifopt::Component::Jacobian Ac
                 = m_jac_dyn_wrt_state_fn(state, control, time);
-            ifopt::Component::Jacobian dcd_dxc
-                = -(2.0 * h / 3.0) * Ac;
+            ifopt::Component::Jacobian dcd_dxc = -(2.0 * h / 3.0) * Ac;
             return dcd_dxc;
         }
 
@@ -537,8 +536,7 @@ ifopt::Component::Jacobian
 
             ifopt::Component::Jacobian Bc
                 = m_jac_dyn_wrt_control_fn(state, control, time);
-            ifopt::Component::Jacobian dcd_duc
-                = -(2.0 * h / 3.0) * Bc;
+            ifopt::Component::Jacobian dcd_duc = -(2.0 * h / 3.0) * Bc;
             return dcd_duc;
         }
     }
@@ -549,13 +547,12 @@ ifopt::Component::Jacobian
     return Z;
 }
 
-ifopt::Component::Jacobian
-    SimpsonDefectConstraints::jacConstraintsWrtState(
-        const size_t k,
-        const size_t j,
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time) const
+ifopt::Component::Jacobian SimpsonDefectConstraints::jacConstraintsWrtState(
+    const size_t k,
+    const size_t j,
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time) const
 {
     const double h = m_dt_segment;
 
@@ -574,19 +571,17 @@ ifopt::Component::Jacobian
 
     const double s_def_I = left ? -1.0 : +1.0;
 
-    ifopt::Component::Jacobian dcd_dx
-        = (s_def_I) * I + (-(h / 6.0)) * dfj_dxj;
+    ifopt::Component::Jacobian dcd_dx = ( s_def_I )*I + (-(h / 6.0)) * dfj_dxj;
 
     return dcd_dx;
 }
 
-ifopt::Component::Jacobian
-    SimpsonDefectConstraints::jacConstraintsWrtControl(
-        const size_t k,
-        const size_t j,
-        const Eigen::VectorXd &state,
-        const Eigen::VectorXd &control,
-        const double time) const
+ifopt::Component::Jacobian SimpsonDefectConstraints::jacConstraintsWrtControl(
+    const size_t k,
+    const size_t j,
+    const Eigen::VectorXd &state,
+    const Eigen::VectorXd &control,
+    const double time) const
 {
     const double h = m_dt_segment;
 
@@ -602,4 +597,3 @@ ifopt::Component::Jacobian
     ifopt::Component::Jacobian dcd_du = (-(h / 6.0)) * B;
     return dcd_du;
 }
-

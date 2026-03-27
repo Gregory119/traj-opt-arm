@@ -28,19 +28,21 @@ double ControlEffortHermSimpCost::GetCost() const
 
     assert(num_knots == num_segments + 1);
 
-    // HermiteSimpson 
+    // HermiteSimpson
     // simpson quadrature over each segment
     // J = sum_k (dt/6) * (||u_k||^2 + 4||u_c,k||^2 + ||u_{k+1}||^2)
     // u_k and u_{k+1} are knot controls and u_c,k is the midpoint control
     double cost{0.0};
 
     for (int k = 0; k < num_segments; ++k) {
-        const auto uk  = ctrl_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
-        const auto uc  = ctrl_mid_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
-        const auto uk1 = ctrl_vars(Eigen::seqN((k + 1) * m_ctrl_len, m_ctrl_len));
+        const auto uk = ctrl_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
+        const auto uc = ctrl_mid_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
+        const auto uk1
+            = ctrl_vars(Eigen::seqN((k + 1) * m_ctrl_len, m_ctrl_len));
 
         cost += (m_dt_segment / 6.0)
-              * (uk.squaredNorm() + 4.0 * uc.squaredNorm() + uk1.squaredNorm());
+                * (uk.squaredNorm() + 4.0 * uc.squaredNorm()
+                   + uk1.squaredNorm());
     }
     return cost;
 };
@@ -66,8 +68,9 @@ void ControlEffortHermSimpCost::FillJacobianBlock(
         // interior knot controls belong to two segments so their
         // total coefficient becomes 2*dt/3
         for (int k = 0; k < num_segments; ++k) {
-            const auto uk  = ctrl_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
-            const auto uk1 = ctrl_vars(Eigen::seqN((k + 1) * m_ctrl_len, m_ctrl_len));
+            const auto uk = ctrl_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
+            const auto uk1
+                = ctrl_vars(Eigen::seqN((k + 1) * m_ctrl_len, m_ctrl_len));
 
             grad(Eigen::seqN(k * m_ctrl_len, m_ctrl_len))
                 += (m_dt_segment / 3.0) * uk;
@@ -92,7 +95,8 @@ void ControlEffortHermSimpCost::FillJacobianBlock(
             = GetVariables()->GetComponent(m_ctrl_vars_name)->GetValues();
         assert(ctrl_vars.size() % m_ctrl_len == 0);
         assert(ctrl_mid_vars.size() % m_ctrl_len == 0);
-        assert((ctrl_vars.size() / m_ctrl_len) == (ctrl_mid_vars.size() / m_ctrl_len) + 1);
+        assert((ctrl_vars.size() / m_ctrl_len)
+               == (ctrl_mid_vars.size() / m_ctrl_len) + 1);
 
         const int num_mid = ctrl_mid_vars.size() / m_ctrl_len;
 
@@ -103,11 +107,13 @@ void ControlEffortHermSimpCost::FillJacobianBlock(
         triplets.reserve(ctrl_mid_vars.size());
 
         for (int k = 0; k < num_mid; ++k) {
-            const auto uc = ctrl_mid_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
+            const auto uc
+                = ctrl_mid_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
 
             for (int j = 0; j < m_ctrl_len; ++j) {
-                triplets.push_back(
-                    {0, k * m_ctrl_len + j, (4.0 * m_dt_segment / 3.0) * uc(j)});
+                triplets.push_back({0,
+                                    k * m_ctrl_len + j,
+                                    (4.0 * m_dt_segment / 3.0) * uc(j)});
             }
         }
 

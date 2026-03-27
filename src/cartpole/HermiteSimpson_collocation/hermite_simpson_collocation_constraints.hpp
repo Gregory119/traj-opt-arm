@@ -20,10 +20,10 @@ using DynFn = std::function<Eigen::VectorXd(const Eigen::VectorXd &state,
                                             const Eigen::VectorXd &control,
                                             const double time)>;
 
-using JacobianDynFn = std::function<ifopt::Component::Jacobian(
-    const Eigen::VectorXd &state,
-    const Eigen::VectorXd &control,
-    const double time)>;
+using JacobianDynFn
+    = std::function<ifopt::Component::Jacobian(const Eigen::VectorXd &state,
+                                               const Eigen::VectorXd &control,
+                                               const double time)>;
 
 class HermiteMidpointConstraints final : public ifopt::ConstraintSet
 {
@@ -57,8 +57,9 @@ public:
         return ifopt::Component::VecBound(GetRows(), {0.0, 0.0});
     }
 
-    void FillJacobianBlock(std::string var_set,
-                           ifopt::Component::Jacobian &jac_block) const override;
+    void FillJacobianBlock(
+        std::string var_set,
+        ifopt::Component::Jacobian &jac_block) const override;
 
 private:
     enum class VariableType
@@ -77,7 +78,8 @@ private:
     int getVarTypeLen(const VariableType var_type) const;
 
     // Create the jacobian of defect constraint vector k w.r.t the vector
-    // variable type (eg. state, control defects and state,control midpoints) at segment k ,knot point j
+    // variable type (eg. state, control defects and state,control midpoints) at
+    // segment k ,knot point j
     ifopt::Component::Jacobian jacConstraintsWrtVar(
         const VariableType var_type,
         const size_t k,
@@ -149,8 +151,9 @@ public:
         return ifopt::Component::VecBound(GetRows(), {0.0, 0.0});
     }
 
-    void FillJacobianBlock(std::string var_set,
-                           ifopt::Component::Jacobian &jac_block) const override;
+    void FillJacobianBlock(
+        std::string var_set,
+        ifopt::Component::Jacobian &jac_block) const override;
 
 private:
     enum class VariableType
@@ -169,7 +172,8 @@ private:
     int getVarTypeLen(const VariableType var_type) const;
 
     // Create the jacobian of defect constraint vector k w.r.t the vector
-    // variable type (eg. state, control defects and state,control midpoints) at segment k ,knot point j
+    // variable type (eg. state, control defects and state,control midpoints) at
+    // segment k ,knot point j
     ifopt::Component::Jacobian jacConstraintsWrtVar(
         const VariableType var_type,
         const size_t k,

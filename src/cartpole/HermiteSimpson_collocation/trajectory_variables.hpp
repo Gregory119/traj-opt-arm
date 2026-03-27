@@ -13,7 +13,7 @@ public:
      * @param x_init Initial solution values (guessed solution).
      * @param bounds Bounds of the discrete state variables.
      */
-    TrajectoryVariables(const std::string& name,
+    TrajectoryVariables(const std::string &name,
                         Eigen::VectorXd x_init,
                         ifopt::Component::VecBound bounds)
         : VariableSet(x_init.size(), name)
