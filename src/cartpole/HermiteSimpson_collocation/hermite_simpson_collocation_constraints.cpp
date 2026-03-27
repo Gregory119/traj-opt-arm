@@ -144,7 +144,7 @@ void HermiteMidpointConstraints::FillJacobianWrt(
         = m_dt_segment;  // will probably just rename m_dt_segment later
 
     // use list of triplets to simplify and avoid costly random
-    // insertions when constructing the final sparse jacobian matrix
+    // insertions when constructing the final sparse jacobian matrix.
     std::vector<Eigen::Triplet<double>> triplet_list;
     const int var_type_len = getVarTypeLen(var_type);
     const int num_nonzero_submatrices = 2;
@@ -154,16 +154,16 @@ void HermiteMidpointConstraints::FillJacobianWrt(
 
     // k indexes a trajectory segment
     // j indexes the variable block whose contribution is being inserted into
-    // the full jacobian for segment k
+    // the full jacobian for segment k.
     //
     // for knot variable sets segment k depends on both
-    // endpoint knot blocks so use j = k and j = k + 1
+    // endpoint knot blocks so use j = k and j = k + 1.
     //
     // for midpoint variable sets there is only one
-    // variable block associated with segment k so only use j = k
+    // variable block associated with segment k so only use j = k.
     //
     // this is why j_max is k + 2 for knot variables and k + 1 for midpoint
-    // variables
+    // variables.
     const size_t k_max = static_cast<size_t>(m_num_segments);
 
     for (size_t k{}; k < k_max; ++k) {
@@ -173,14 +173,14 @@ void HermiteMidpointConstraints::FillJacobianWrt(
         // midpoint variable sets have one block per segment so only j = k is
         // vald
         // knot variable sets have two neighboring blocks for
-        // segment k, j = k an j = k + 1
+        // segment k, j = k an j = k + 1.
         const size_t j_max = is_mid ? (k + 1) : (k + 2);
 
         for (size_t j = k; j < j_max; ++j) {
             // j is used here instead of k because the loop bounds above
             // guarantee that j already refers to the correct variable block
             // midpoint  j = k is usd
-            // knot j = k and j = k + 1 are used
+            // knot j = k and j = k + 1 are used.
             auto statej
                 = is_mid
                       ? state_mid_vars(
@@ -445,7 +445,7 @@ void SimpsonDefectConstraints::FillJacobianWrt(
         = m_dt_segment;  // will probably just rename m_dt_segment later
 
     // use list of triplets to simplify and avoid costly random
-    // insertions when constructing the final sparse jacobian matrix
+    // insertions when constructing the final sparse jacobian matrix.
     std::vector<Eigen::Triplet<double>> triplet_list;
     const int var_type_len = getVarTypeLen(var_type);
     const int num_nonzero_submatrices = 2;
@@ -455,16 +455,16 @@ void SimpsonDefectConstraints::FillJacobianWrt(
 
     // k indexes a trajectory segment
     // j indexes the variable block whose contribution is being inserted into
-    // the full jacobian for segment k
+    // the full jacobian for segment k.
     //
     // for knot variable sets Simpson defect for segment k depends on both
-    // endpoint knot blocks so use j = k and j = k + 1
+    // endpoint knot blocks so use j = k and j = k + 1.
     //
     // for midpoint variable sets there is only one
-    // variable block associated with segment k so only use j = k
+    // variable block associated with segment k so only use j = k.
     //
     // j_max is k + 2 for knot variables and k + 1 for midpoint
-    // variables
+    // variables.
     const size_t k_max = static_cast<size_t>(m_num_segments);
 
     for (size_t k{}; k < k_max; ++k) {
@@ -472,16 +472,16 @@ void SimpsonDefectConstraints::FillJacobianWrt(
                              || var_type == VariableType::CONTROL_MID);
 
         // midpoint variable sets have one block per segment so only j = k is
-        // vald
+        // vald.
         // knot variable sets have two neighboring blocks for
-        // segment k, j = k an j = k + 1
+        // segment k, j = k an j = k + 1.
         const size_t j_max = is_mid ? (k + 1) : (k + 2);
 
         for (size_t j = k; j < j_max; ++j) {
             // j is used here instead of k because the loop bounds above
             // guarantee that j already refers to the correct variable block
-            // midpoint  j = k is usd
-            // knot j = k and j = k + 1 are used
+            // midpoint  j = k is usd.
+            // knot j = k and j = k + 1 are used.
             auto statej
                 = is_mid
                       ? state_mid_vars(
