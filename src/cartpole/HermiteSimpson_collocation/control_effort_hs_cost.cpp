@@ -62,8 +62,8 @@ void ControlEffortHermSimpCost::FillJacobianBlock(
 
         // for one HermiteSimpsn segment
         // J_k = (dt/6) * (||u_k||^2 + 4||u_c,k||^2 + ||u_{k+1}||^2)
-        // dJ_k/du_k   = (dt/3) * u_k
-        // dJ_k/du_k+1 = (dt/3) * u_k+1
+        // dJ_k/du_{k}   = (dt/3) * u_{k}
+        // dJ_k/du_{k+1} = (dt/3) * u_{k+1}
         //
         // interior knot controls belong to two segments so their
         // total coefficient becomes 2*dt/3
