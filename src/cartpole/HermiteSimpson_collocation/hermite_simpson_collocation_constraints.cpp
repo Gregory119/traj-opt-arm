@@ -152,48 +152,58 @@ void HermiteMidpointConstraints::FillJacobianWrt(
     triplet_list.reserve(m_state_len * var_type_len * num_nonzero_submatrices
                          * num_defect_vec_eqns);
 
-    // k indexes a trajectory segment, and j indexes the neighboring knot block
-    // used for that segment (j = k or j = k+1)
-    // For each segment, this class contributes only the Hermite midpoint
-    // constraint vector c_mid so the row offset is k * m_state_len Knot
-    // variables use column block j Midpoint variables use column block k
-    const int k_max = m_num_segments;
+    // k indexes a trajectory segment
+    // j indexes the variable block whose contribution is being inserted into
+    // the full jacobian for segment k
+    //
+    // for knot variable sets segment k depends on both
+    // endpoint knot blocks so use j = k and j = k + 1
+    //
+    // for midpoint variable sets there is only one
+    // variable block associated with segment k so only use j = k
+    //
+    // this is why j_max is k + 2 for knot variables and k + 1 for midpoint
+    // variables
+    const size_t k_max = static_cast<size_t>(m_num_segments);
 
     for (size_t k{}; k < k_max; ++k) {
-        for (size_t j = k; j < k + 2; ++j) {
-            const bool is_mid = (var_type == VariableType::STATE_MID
-                                 || var_type == VariableType::CONTROL_MID);
-            // for midpoint var sets, there is only one variable block per
-            // segment index k not per knot index j for knot var sets use index
-            // j
-            const size_t col_idx = is_mid ? k : j;
+        const bool is_mid = (var_type == VariableType::STATE_MID
+                             || var_type == VariableType::CONTROL_MID);
 
+        // midpoint variable sets have one block per segment so only j = k is
+        // vald
+        // knot variable sets have two neighboring blocks for
+        // segment k, j = k an j = k + 1
+        const size_t j_max = is_mid ? (k + 1) : (k + 2);
+
+        for (size_t j = k; j < j_max; ++j) {
+            // j is used here instead of k because the loop bounds above
+            // guarantee that j already refers to the correct variable block
+            // midpoint  j = k is usd
+            // knot j = k and j = k + 1 are used
             auto statej
                 = is_mid
                       ? state_mid_vars(
-                            Eigen::seqN(k * m_state_len, m_state_len))
+                            Eigen::seqN(j * m_state_len, m_state_len))
                       : state_vars(Eigen::seqN(j * m_state_len, m_state_len));
             auto controlj
                 = is_mid ? control_mid_vars(
-                               Eigen::seqN(k * m_control_len, m_control_len))
+                               Eigen::seqN(j * m_control_len, m_control_len))
                          : control_vars(
                                Eigen::seqN(j * m_control_len, m_control_len));
 
-            const double tj = is_mid ? ((static_cast<double>(k) + 0.5) * h)
+            const double tj = is_mid ? ((static_cast<double>(j) + 0.5) * h)
                                      : (m_dt_segment * j);
 
-            // defects increment for each row
-            const int row_start = k * m_state_len;
-            // control/state vectors increment for each column
-            const int col_start = static_cast<int>(col_idx) * var_type_len;
+            // segment k has rows starting at k * m_state_len
+            const int row_start = static_cast<int>(k) * m_state_len;
 
-            // get triplets for the segment constraint Jacobian
-            // c_mid w.r.t. the selected variable block
+            // variable block j has columns starting at j * var_type_len
+            const int col_start = static_cast<int>(j) * var_type_len;
+
             ifopt::Component::Jacobian jac_constraints_wrt_var
                 = jacConstraintsWrtVar(var_type, k, j, statej, controlj, tj);
 
-            // extract triplets for final jacobian construction and
-            // making sure to offset the indices
             auto sub_triplets = sparseMatrixToTriplets(jac_constraints_wrt_var,
                                                        row_start,
                                                        col_start);
@@ -443,48 +453,58 @@ void SimpsonDefectConstraints::FillJacobianWrt(
     triplet_list.reserve(m_state_len * var_type_len * num_nonzero_submatrices
                          * num_defect_vec_eqns);
 
-    // k indexes a trajectory segment, and j indexes the neighboring knot block
-    // used for that segment (j = k or j = k+1)
-    // For each segment, this class contributes only the Simpson defect vector
-    // c_def, so the row offset is k * m_state_len. knot variables use column
-    // block j midpoint variables use column block k
-    const int k_max = m_num_segments;
+    // k indexes a trajectory segment
+    // j indexes the variable block whose contribution is being inserted into
+    // the full jacobian for segment k
+    //
+    // for knot variable sets Simpson defect for segment k depends on both
+    // endpoint knot blocks so use j = k and j = k + 1
+    //
+    // for midpoint variable sets there is only one
+    // variable block associated with segment k so only use j = k
+    //
+    // j_max is k + 2 for knot variables and k + 1 for midpoint
+    // variables
+    const size_t k_max = static_cast<size_t>(m_num_segments);
 
     for (size_t k{}; k < k_max; ++k) {
-        for (size_t j = k; j < k + 2; ++j) {
-            const bool is_mid = (var_type == VariableType::STATE_MID
-                                 || var_type == VariableType::CONTROL_MID);
-            // for midpoint var sets, there is only one variable block per
-            // segment index k not per knot index j for knot var sets use index
-            // j
-            const size_t col_idx = is_mid ? k : j;
+        const bool is_mid = (var_type == VariableType::STATE_MID
+                             || var_type == VariableType::CONTROL_MID);
 
+        // midpoint variable sets have one block per segment so only j = k is
+        // vald
+        // knot variable sets have two neighboring blocks for
+        // segment k, j = k an j = k + 1
+        const size_t j_max = is_mid ? (k + 1) : (k + 2);
+
+        for (size_t j = k; j < j_max; ++j) {
+            // j is used here instead of k because the loop bounds above
+            // guarantee that j already refers to the correct variable block
+            // midpoint  j = k is usd
+            // knot j = k and j = k + 1 are used
             auto statej
                 = is_mid
                       ? state_mid_vars(
-                            Eigen::seqN(k * m_state_len, m_state_len))
+                            Eigen::seqN(j * m_state_len, m_state_len))
                       : state_vars(Eigen::seqN(j * m_state_len, m_state_len));
             auto controlj
                 = is_mid ? control_mid_vars(
-                               Eigen::seqN(k * m_control_len, m_control_len))
+                               Eigen::seqN(j * m_control_len, m_control_len))
                          : control_vars(
                                Eigen::seqN(j * m_control_len, m_control_len));
 
-            const double tj = is_mid ? ((static_cast<double>(k) + 0.5) * h)
+            const double tj = is_mid ? ((static_cast<double>(j) + 0.5) * h)
                                      : (m_dt_segment * j);
 
-            // defects increment for each row
+            // segment k has rows starting at k * m_state_len
             const int row_start = static_cast<int>(k) * m_state_len;
-            // control/state vectors increment for each column
-            const int col_start = static_cast<int>(col_idx) * var_type_len;
 
-            // get triplets for the segment constraint Jacobian
-            // c_def w.r.t. the selected variable block
+            // variable block j has columns starting at j * var_type_len
+            const int col_start = static_cast<int>(j) * var_type_len;
+
             ifopt::Component::Jacobian jac_constraints_wrt_var
                 = jacConstraintsWrtVar(var_type, k, j, statej, controlj, tj);
 
-            // extract triplets for final jacobian construction and
-            // making sure to offset the indices
             auto sub_triplets = sparseMatrixToTriplets(jac_constraints_wrt_var,
                                                        row_start,
                                                        col_start);
