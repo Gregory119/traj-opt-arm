@@ -89,11 +89,12 @@ Eigen::VectorXd guessStateTraj(const int state_len,
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        std::cout << "Path to model required." << std::endl;
+    if (argc != 3) {
+        std::cout << "Path to model and calibration file required (in this order)." << std::endl;
         return 0;
     }
-
+    const std::string calibration_file_path(argv[2]);
+    
     // Load the urdf model
     const std::string mj_filename = argv[1];
     pin::Model model;
@@ -271,17 +272,9 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    SO101Bus::Config cfg;
-    cfg.device = "/dev/ttyACM0";
+    Calibration calibration(calibration_file_path);
+    SO101Bus::Config cfg(calibration);
     cfg.record_timing_stats = true;
-    cfg.sid_to_pos_tic_range = {{
-      {1, ServoPosRange{751, 3470}},
-      {2, ServoPosRange{920, 3281}},
-      {3, ServoPosRange{933, 3137}},
-      {4, ServoPosRange{875, 3215}},
-      {5, ServoPosRange{221, 4022}},
-      {6, ServoPosRange{2037, 3499}},
-    }};
 
     SO101Bus bus(cfg);
     if (!bus.connect()) {

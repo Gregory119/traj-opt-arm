@@ -1,11 +1,48 @@
 #include "calibration.hpp"
 
 #include <cassert>
+#include <exception>
+#include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <numbers>
+
+using json = nlohmann::json;
 
 // 12-bit encoder => 4096 tics per revolution, but the first tic is zero
 static const int g_tic_p_rev = 4095;
+
+Calibration::Calibration(const std::string &calibration_file_path)
+{
+    // open file
+    std::ifstream f(calibration_file_path);
+    if (!f.is_open()) {
+        std::ostringstream os;
+        os << "Calibration() - failed to open calibration file: "
+           << calibration_file_path;
+        throw std::invalid_argument(os.str());
+    }
+
+    std::map<int, ServoPosRange> tmp = {{1, ServoPosRange{751, 3470}},
+                                        {2, ServoPosRange{920, 3281}},
+                                        {3, ServoPosRange{933, 3137}},
+                                        {4, ServoPosRange{875, 3215}},
+                                        {5, ServoPosRange{221, 4022}},
+                                        {6, ServoPosRange{2037, 3499}}};
+
+    // extract data
+    json data = json::parse(f);
+    for (auto &[_, value] : data.items()) {
+        const int sid = value["id"].get<int>();
+        m_pos_tic_ranges[sid] = {.pos_min = value["range_min"].get<int>(),
+                                 .pos_max = value["range_max"].get<int>()};
+        std::cout << "range_min = " << value["range_min"].get<int>()
+                  << ", range_max = " << value["range_max"].get<int>()
+                  << std::endl;
+        assert(m_pos_tic_ranges[sid].pos_min == tmp[sid].pos_min);
+        assert(m_pos_tic_ranges[sid].pos_max == tmp[sid].pos_max);
+    }
+}
 
 Calibration::Calibration(const std::map<int, ServoPosRange> &pos_tic_ranges)
     : m_pos_tic_ranges{pos_tic_ranges}

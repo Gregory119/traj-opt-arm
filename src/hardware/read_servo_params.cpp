@@ -1,3 +1,4 @@
+#include <iostream>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -25,11 +26,15 @@ static double now_sec_monotonic() { //timing function
 }
 
 int main(int argc, char** argv) {
-    std::string device = (argc >= 2) ? argv[1] : "/dev/ttyACM0";
-    // gotta replace this with a new initialization of a SO101Bus object I think
-    SO101Bus arm;
-    if (!arm.connect(device)) {
-        std::fprintf(stderr, "cant open %s: %s\n", device.c_str(), std::strerror(errno));
+    if (argc != 2) {
+        std::cout << "Missing calibration file path." << std::endl;
+        return 0;
+    }
+    Calibration calibration(std::string{argv[1]});
+    SO101Bus::Config cfg(calibration);
+    SO101Bus arm(cfg);
+    if (!arm.connect()) {
+        std::fprintf(stderr, "cant open %s: %s\n", cfg.device.c_str(), std::strerror(errno));
         return 1;
     }
 
@@ -64,7 +69,7 @@ int main(int argc, char** argv) {
 
         const double t = now_sec_monotonic() - t0; // measure time since the start of the program
         // print column descriptions
-        std::printf("SO-101 Servo State (IDs 1..6)   t=%.2f s   rate=%.1f Hz   device=%s\n", t, rate_hz, device.c_str());
+        std::printf("SO-101 Servo State (IDs 1..6)   t=%.2f s   rate=%.1f Hz   device=%s\n", t, rate_hz, cfg.device.c_str());
         std::printf("--------------------------------------------------------------------------------\n");
         std::printf(" ID |  Pos   |  Speed  |  Load   |  Volt  | Temp | Err | Raw (8 bytes @0x38)\n");
         std::printf("--------------------------------------------------------------------------------\n");

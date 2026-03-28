@@ -12,7 +12,7 @@
 #include "traj_element.hpp"
 
 // SO101Bus: feetech bus operations adn position only trajectory execution
-class SO101Bus {
+class SO101Bus final {
 public:
   // state
   struct ServoStateBasic {
@@ -37,9 +37,12 @@ public:
 
   // configuration
   struct Config {
-    std::string device{"/dev/ttyACM0"};
-    std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
-      std::map<int, ServoPosRange> sid_to_pos_tic_range;
+      Config(const Calibration& cal) : calibration{cal}
+      {}
+
+      std::string device{"/dev/ttyACM0"};
+      std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
+      Calibration calibration;
 
     //flags
     bool ping_on_connect{true};
@@ -50,22 +53,9 @@ public:
   };
 
 
-
-  SO101Bus();
   explicit SO101Bus(Config cfg);
-  ~SO101Bus() = default;
-
-  SO101Bus(const SO101Bus&) = delete;
-  SO101Bus& operator=(const SO101Bus&) = delete;
-  SO101Bus(SO101Bus&&) noexcept = default;
-  SO101Bus& operator=(SO101Bus&&) noexcept = default;
-
-  // configuration and connection
-  void set_config(const Config& cfg);
-  [[nodiscard]] const Config& config() const noexcept { return cfg_; }
 
   bool connect();
-  bool connect(const std::string& device);
   void disconnect() noexcept;
 
   [[nodiscard]] bool is_connected() const noexcept { return port_.is_open(); }
@@ -128,7 +118,6 @@ private:
   };
   bool ensure_connected_();
 
-  Config cfg_{};
-  Port   port_{};
-    const Calibration calibration_;
+    const Config cfg_;
+  Port   port_;
 };

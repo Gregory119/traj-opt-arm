@@ -80,17 +80,10 @@ static inline uint8_t hi(uint16_t v) { return static_cast<uint8_t>((v >> 8) & 0x
 
 // SO101Bus class handling lifecycle / connection
 
-SO101Bus::SO101Bus() : SO101Bus(Config{}) {} //delegating default constructor for SO101_Bus and configuration classes
-
 SO101Bus::SO101Bus(Config cfg)
     : cfg_(std::move(cfg))
-    , calibration_{cfg_.sid_to_pos_tic_range}
 {
-    assert(cfg_.sid_to_pos_tic_range.size() == cfg_.ids.size());
-}
-
-void SO101Bus::set_config(const Config& cfg) { //setter for the particular configuration
-  cfg_ = cfg;
+    assert(cfg_.calibration.size() == cfg_.ids.size());
 }
 
 bool SO101Bus::connect() {
@@ -111,12 +104,6 @@ bool SO101Bus::connect() {
       }
   }
   return true;
-}
-
-// overloaded function with device parameter that calls connect()
-bool SO101Bus::connect(const std::string& device) {
-  cfg_.device = device;
-  return connect();
 }
 
 // close port without throwing an exception
@@ -475,7 +462,7 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
 
   // check position is in range and return false if not
   for (int sid : cfg_.ids) {
-    if (!calibration_.inRangeTic(pos[sid - 1], sid)) {
+    if (!cfg_.calibration.inRangeTic(pos[sid - 1], sid)) {
       std::cout
           << "write_all_positions() - target tick position out of range. pos="
           << static_cast<int>(pos[sid - 1]) << ", sid=" << sid << std::endl;
@@ -562,27 +549,26 @@ bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
     std::array<uint16_t, 6> target_pos_tic{};
     std::cout << "sending target positions: [";
     for (int i{}; i < e.q.size(); ++i) {
-        std::cout << e.q(i);
-      if (!calibration_.inRangePos(e.q(i), cfg_.ids[i], pos_unit)) {
+      std::cout << e.q(i);
+      if (!cfg_.calibration.inRangePos(e.q(i), cfg_.ids[i], pos_unit)) {
             return false;
       }
       switch (pos_unit) {
             case PosUnit::RADIAN:
-                target_pos_tic[i] = calibration_.posToTic(e.q(i),
-                                                          cfg_.ids[i],
-                                                          PosUnit::RADIAN);
+                target_pos_tic[i] = cfg_.calibration.posToTic(e.q(i),
+                                                              cfg_.ids[i],
+                                                              PosUnit::RADIAN);
                 break;
 
             case PosUnit::DEGREE:
-                target_pos_tic[i] = calibration_.posToTic(e.q(i),
-                                                          cfg_.ids[i],
-                                                          PosUnit::DEGREE);
+                target_pos_tic[i] = cfg_.calibration.posToTic(e.q(i),
+                                                              cfg_.ids[i],
+                                                              PosUnit::DEGREE);
                 break;
       }
       std::cout << "(" << target_pos_tic[i] << "), ";
     }
     std::cout << "]" << std::endl;
-    
 
     if (!write_all_positions(target_pos_tic, cfg_.read_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
