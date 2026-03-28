@@ -1,6 +1,7 @@
 #include <iostream>
 #include <numbers>
 #include <pinocchio/parsers/mjcf.hpp>
+#include <so101_bus.hpp>
 
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
@@ -42,10 +43,13 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
             // path bounds
 
             // joint positions path bounds
-            for (int j{}; j < state_len / 2; ++j) {
+            for (int j{}; j < state_len / 2 - 1; ++j) {
                 bounds.push_back({-1.0 / 4.0 * std::numbers::pi,
                                   1.0 / 4.0 * std::numbers::pi});
             }
+            // end effector path bounds
+            bounds.push_back({0.0, 2.25});
+            
             // joint velocity path bounds
             for (int j{}; j < state_len / 2; ++j) {
                 bounds.push_back({-ifopt::inf, ifopt::inf});
@@ -85,11 +89,12 @@ Eigen::VectorXd guessStateTraj(const int state_len,
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        std::cout << "Path to model required." << std::endl;
+    if (argc != 3) {
+        std::cout << "Path to model and calibration file required (in this order)." << std::endl;
         return 0;
     }
-
+    const std::string calibration_file_path(argv[2]);
+    
     // Load the urdf model
     const std::string mj_filename = argv[1];
     pin::Model model;
@@ -106,7 +111,7 @@ int main(int argc, char **argv)
     // state bounds
     const int state_len = 6 * 2;
     const int num_state_vars = (num_segments + 1) * state_len;
-    const Eigen::VectorXd state_end{{std::numbers::pi / 4,
+    const Eigen::VectorXd state_end{{-std::numbers::pi / 4,
                                      0.0,
                                      0.0,
                                      0.0,
@@ -259,6 +264,28 @@ int main(int argc, char **argv)
     Simulator::getInstance()->setTrajectory(sampled_state_traj);
 
     Simulator::getInstance()->run();
+
+    ///////////////////////////////////////////////////////////////////////
+    // Send trajectory to physical arm
+    //////////////////////////////////////////////////////////////////////
+    if (false) {
+        return 0;
+    }
+
+    Calibration calibration(calibration_file_path);
+    SO101Bus::Config cfg(calibration);
+    cfg.record_timing_stats = true;
+
+    SO101Bus bus(cfg);
+    if (!bus.connect()) {
+        std::cerr << "failed to connect to " << cfg.device << "\n";
+        return 0;
+    }
+
+    if (!bus.execute_traj_full(sampled_state_traj, PosUnit::RADIAN)) {
+        std::cerr << "trajectory execution failed\n";
+        return 2;
+    }
 
     return 0;
 }
