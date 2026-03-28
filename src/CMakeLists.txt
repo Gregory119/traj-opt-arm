@@ -39,6 +39,13 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(rapidcsv)
 
+# --- manually add json library ---
+
+FetchContent_Declare(
+  json
+  URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+FetchContent_MakeAvailable(json)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/trajectory_optimization)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ifopt)

@@ -36,7 +36,7 @@ static uint8_t checksum_feetech(const uint8_t* body_no_header, size_t n) {
 // this function writes raw bytes to fd(a file descriptor which serves as a destination for the serial port)
 // buf is a pointer to the first byte to transmit, starting with 0xFF, 0xFF, ... 
 // n is number of bytes to transmit
-static bool write_all(int fd, const uint8_t* buf, size_t n) {
+[[nodiscard]] static bool write_all(int fd, const uint8_t* buf, size_t n) {
 
     while (n > 0) { //loop through all bytes
         ssize_t w = ::write(fd, buf, n); // sys call to write to /dev/ttyACM0 as if it were a file
@@ -164,8 +164,10 @@ bool SO101Bus::read_reply(
 
     // sanity check
     if (timeout_ms < 1) {
-        std::cout << "ERROR: SO101Bus::read_reply() - timeout too small" << std::endl;
-        return false;
+    std::cout
+        << "ERROR: SO101Bus::read_reply() - timeout too small. servo id = "
+        << static_cast<int>(expected_id) << std::endl;
+    return false;
     }
 
     // read the header
@@ -173,11 +175,11 @@ bool SO101Bus::read_reply(
         // return number of bytes read
         ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
         if (k <= 0) {
-            std::cout
-                << "ERROR: SO101Bus::read_reply(). Failed to read "
-                   "header. Either timeout, file descriptor closed, or error."
-                << std::endl;
-            return false;
+        std::cout << "ERROR: SO101Bus::read_reply(). Failed to read "
+                     "header. Either timeout, file descriptor closed, or "
+                     "error. servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
+        return false;
         }
 
         got += static_cast<int>(k);
@@ -192,9 +194,10 @@ bool SO101Bus::read_reply(
     // id check
     if(reply.id != expected_id){
         std::cout
-            <<"ERROR: SO101Bus::read_reply(). Replying servo ID does not match the requested ID or stream misalignment is causing"
-              "the wrong byte to be read as ID. Exiting"
-            << std::endl;
+            << "ERROR: SO101Bus::read_reply(). Replying servo ID does not "
+               "match the requested ID or stream misalignment is causing"
+               "the wrong byte to be read as ID. Exiting. servo id = "
+            << static_cast<int>(expected_id) << std::endl;
         return false;
     }
 
@@ -203,11 +206,11 @@ bool SO101Bus::read_reply(
         // return number of bytes read
         ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
         if (k <= 0) {
-            std::cout
-                << "ERROR: SO101Bus::read_reply(). Failed to read "
-                   "data and checksum. Either timeout, file descriptor closed, or error."
-                << std::endl;
-            return false;
+        std::cout << "ERROR: SO101Bus::read_reply(). Failed to read "
+                     "data and checksum. Either timeout, file descriptor "
+                     "closed, or error. servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
+        return false;
         }
 
         got += static_cast<int>(k);
@@ -227,15 +230,17 @@ bool SO101Bus::read_reply(
     
     if (checksum_feetech(&r[2] , reply.data_length+1)
         != reply.check_sum) {
-        std::cout << "ERROR: SO101Bus::read_reply(). Checksum match failure."
-                  << std::endl;
+        std::cout << "ERROR: SO101Bus::read_reply(). Checksum match failure. "
+                     "servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
         return false;
     }
 
     // check error
     if (reply.error_status != 0) {
-        std::cout << "ERROR: SO101Bus::read_reply(). Servo in error status."
-                  << std::endl;
+        std::cout << "ERROR: SO101Bus::read_reply(). Servo in error status. "
+                     "servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
         return false;
     }
     return true;
@@ -473,7 +478,7 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
     if (!calibration_.inRangeTic(pos[sid - 1], sid)) {
       std::cout
           << "write_all_positions() - target tick position out of range. pos="
-          << pos[sid - 1] << ", sid=" << sid << std::endl;
+          << static_cast<int>(pos[sid - 1]) << ", sid=" << sid << std::endl;
       return false;
     }
   }
@@ -519,7 +524,7 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
   return send_sync(pos);
 }
 
-bool SO101Bus::execute_traj_full(const std::deque<TrajElement> &traj,
+bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
                                  const PosUnit pos_unit)
 {
   if (traj.empty()) return true;
@@ -537,7 +542,7 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement> &traj,
   std::array<uint16_t, 6> last_target_pos_tic{};
 
   for (size_t i = 0; i < traj.size(); ++i) {
-    const TrajElement& e = traj[i];
+    const JointState& e = traj[i];
 
     // sleep until the scheduled send time
     double rel_s = e.time - t0;
@@ -555,31 +560,29 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement> &traj,
 
     // convert target position to tics
     std::array<uint16_t, 6> target_pos_tic{};
-    for (int i{}; i < e.val.size(); ++i) {
+    std::cout << "sending target positions: [";
+    for (int i{}; i < e.q.size(); ++i) {
+        std::cout << e.q(i);
+      if (!calibration_.inRangePos(e.q(i), cfg_.ids[i], pos_unit)) {
+            return false;
+      }
       switch (pos_unit) {
             case PosUnit::RADIAN:
-              if (!calibration_.inRangePos(e.val[i], cfg_.ids[i], pos_unit)) {
-                std::cout << "target position out of range. target pos = "
-                          << e.val[i] << ", sid=" << cfg_.ids[i]
-                          << ", unit radian" << std::endl;
-                return false;
-              }
-              target_pos_tic[i]
-                = calibration_.posToTic(e.val[i], cfg_.ids[i], PosUnit::RADIAN);
-              break;
+                target_pos_tic[i] = calibration_.posToTic(e.q(i),
+                                                          cfg_.ids[i],
+                                                          PosUnit::RADIAN);
+                break;
 
             case PosUnit::DEGREE:
-              if (!calibration_.inRangePos(e.val[i], cfg_.ids[i], pos_unit)) {
-                std::cout << "target position out of range. target pos = "
-                          << e.val[i] << ", sid=" << cfg_.ids[i]
-                          << ", unit radian" << std::endl;
-                return false;
-              }
-              target_pos_tic[i]
-                = calibration_.posToTic(e.val[i], cfg_.ids[i], PosUnit::DEGREE);
-              break;
+                target_pos_tic[i] = calibration_.posToTic(e.q(i),
+                                                          cfg_.ids[i],
+                                                          PosUnit::DEGREE);
+                break;
       }
+      std::cout << "(" << target_pos_tic[i] << "), ";
     }
+    std::cout << "]" << std::endl;
+    
 
     if (!write_all_positions(target_pos_tic, cfg_.read_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);

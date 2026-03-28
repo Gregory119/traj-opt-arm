@@ -15,6 +15,7 @@ target_include_directories(so101_bus
 target_link_libraries(so101_bus
   PUBLIC
     Threads::Threads
+    traj_utils
 )
 
 

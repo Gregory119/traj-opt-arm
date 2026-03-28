@@ -1,9 +1,6 @@
 #include "so101_bus.hpp"
 
-#include <deque>
 #include <iostream>
-#include <string>
-#include <vector>
 
 
 int main(int argc, char** argv) {
@@ -12,12 +9,12 @@ int main(int argc, char** argv) {
   cfg.record_timing_stats = true;
 
   cfg.sid_to_pos_tic_range = {{
-      {1, ServoPosRange{2618, 5146}},
-      {2, ServoPosRange{3372, 5698}},
-      {3, ServoPosRange{2557, 650}},
-      {4, ServoPosRange{0, 1017}},
-      {5, ServoPosRange{5746, 1942}},
-      {6, ServoPosRange{3469, 834}},
+      {1, ServoPosRange{751, 3470}},
+      {2, ServoPosRange{920, 3281}},
+      {3, ServoPosRange{933, 3137}},
+      {4, ServoPosRange{875, 3215}},
+      {5, ServoPosRange{221, 4022}},
+      {6, ServoPosRange{2037, 3499}},
   }};
 
   SO101Bus bus(cfg);
@@ -26,16 +23,24 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  std::deque<TrajElement> traj;
+  DiscreteJointStateTraj traj;
   
   const double dt = 0.020; //step in s
   const double T  = 5.0; //total time
   const int steps = static_cast<int>(T / dt); 
   for (int k = 0; k <= steps; ++k) {
-    traj.push_back(TrajElement{.time= k * dt, .val={90, 45, 110, 90, 90, 0}});
+    traj.push_back(
+        JointState{.time = k * dt,
+                   .q = (Eigen::VectorXd(6) << 0.0 * std::numbers::pi / 180.0,
+                         0.0,
+                         0.0,
+                         0.0,
+                         0.0,
+                         0.0 * std::numbers::pi / 180.0)
+                            .finished()});
   }
 
-  if (!bus.execute_traj_full(traj, PosUnit::DEGREE)) {
+  if (!bus.execute_traj_full(traj, PosUnit::RADIAN)) {
     std::cerr << "trajectory execution failed\n";
     return 2;
   }

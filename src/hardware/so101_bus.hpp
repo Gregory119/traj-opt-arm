@@ -81,7 +81,7 @@ public:
      *
      * @param unit Unit of the trajectory positions.
      */
-    bool execute_traj_full(const std::deque<TrajElement>& traj, const PosUnit pos_unit);
+    bool execute_traj_full(const DiscreteJointStateTraj& traj, const PosUnit pos_unit);
 
   static int  open_port_1Mbps(const char* path);
 
