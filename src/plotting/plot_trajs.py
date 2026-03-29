@@ -234,28 +234,32 @@ def main():
     filename_sim_state_traj = f"sim-record-state-traj-{algs_lower}-{args.model}.csv"
     filename_hw_state_traj = f"hw-record-state-traj-{algs_lower}-{args.model}.csv"
 
-    # plots
+    # generated trajectory plot
 
-    # fig_ax_tuples = plot_state_traj(
-    #     path_collocation_state_traj=args.traj_data_dir / filename_collocation_state_traj,
-    #     path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
-    #     path_state_bounds_traj=args.traj_data_dir / filename_col_state_bounds_traj,
-    #     algorithm_name=args.algorithm
-    # )
+    fig_ax_tuples = plot_state_traj(
+        path_collocation_state_traj=args.traj_data_dir / filename_collocation_state_traj,
+        path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
+        path_state_bounds_traj=args.traj_data_dir / filename_col_state_bounds_traj,
+        algorithm_name=args.algorithm
+    )
 
-    # fig_ax_tuples = plot_state_traj_err(
-    #     path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
-    #     path_true_state_traj = args.traj_data_dir / filename_sim_state_traj,
-    #     algorithm_name=args.algorithm,
-    #     name="Simulation"
-    # )
+    # simulation plots
 
-    # fig_ax_tuples += plot_state_traj_comp(path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
-    #                                       path_true_state_traj=args.traj_data_dir / filename_sim_state_traj,
-    #                                       algorithm_name=args.algorithm,
-    #                                       name="Simulation")
+    fig_ax_tuples += plot_state_traj_err(
+        path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
+        path_true_state_traj = args.traj_data_dir / filename_sim_state_traj,
+        algorithm_name=args.algorithm,
+        name="Simulation"
+    )
 
-    fig_ax_tuples = plot_state_traj_err(
+    fig_ax_tuples += plot_state_traj_comp(path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
+                                          path_true_state_traj=args.traj_data_dir / filename_sim_state_traj,
+                                          algorithm_name=args.algorithm,
+                                          name="Simulation")
+
+    # hardware plots
+    
+    fig_ax_tuples += plot_state_traj_err(
         path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
         path_true_state_traj = args.traj_data_dir / filename_hw_state_traj,
         algorithm_name=args.algorithm,
@@ -266,13 +270,15 @@ def main():
                                           path_true_state_traj=args.traj_data_dir / filename_hw_state_traj,
                                           algorithm_name=args.algorithm,
                                           name="Hardware")
+
+    # control/torque plot
     
-    # fig_ax_tuples += plot_ctrl_traj(
-    #     path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
-    #     path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
-    #     path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
-    #     algorithm_name=args.algorithm
-    # )
+    fig_ax_tuples += plot_ctrl_traj(
+        path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
+        path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
+        path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
+        algorithm_name=args.algorithm
+    )
     
     plt.show()
 
