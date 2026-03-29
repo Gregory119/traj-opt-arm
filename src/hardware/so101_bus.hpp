@@ -44,10 +44,15 @@ public:
       std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
       Calibration calibration;
 
+      // gains
+      uint8_t p{24};
+      uint8_t i{0};
+      uint8_t d{24};
+
     // flags
     bool record_timing_stats{false};
 
-    int read_timeout_ms{1};
+    int rw_timeout_ms{1};
 
       // int settle_dur_ms{
       // int settle_read_state_period_ms{20.0};
@@ -86,6 +91,8 @@ public:
   [[nodiscard]] bool feetech_read_bytes(uint8_t id, uint8_t start_address, std::vector<uint8_t>& out, int timeout_ms, uint8_t& out_error);
   [[nodiscard]] bool feetech_read_state_basic(uint8_t id, ServoStateBasic& out, int timeout_ms);
 
+    [[nodiscard]] bool write_gains();
+    
     /*
      * This function uses the 'SYNC WRITE' functionality in the message protocol,
      * which sends a single packet containing the write data for all servos

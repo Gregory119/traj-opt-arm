@@ -139,7 +139,7 @@ int main(int argc, char **argv)
     // control bounds
     const int control_len = 6;
     const int num_control_vars = control_len * (num_segments + 1);
-    const double rated_torque_kgcm = 10;
+    const double rated_torque_kgcm = 10 / 1.2;
     const double gravity = 9.81;
     const double max_control_force = rated_torque_kgcm * gravity / 100.0;
     ifopt::Component::VecBound control_bounds

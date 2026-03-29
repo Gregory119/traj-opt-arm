@@ -101,6 +101,11 @@ bool SO101Bus::connect() {
     port_.close();
     return false;
   }
+
+  if (!write_gains()) {
+    return false;
+  }
+
   return true;
 }
 
@@ -121,7 +126,7 @@ bool SO101Bus::ensure_connected_() {
 bool SO101Bus::ping_all() {
   if (!ensure_connected_()) return false;
   for (uint8_t id : cfg_.ids) {
-    if (!feetech_ping(id, cfg_.read_timeout_ms)) return false;
+    if (!feetech_ping(id, cfg_.rw_timeout_ms)) return false;
   }
   return true;
 }
@@ -462,6 +467,20 @@ bool SO101Bus::read_all_states(const int timeout_ms,
     return true;
 }
 
+bool SO101Bus::write_gains()
+{
+    for (int sid : cfg_.ids) {
+        const bool ret
+            = feetech_write_byte(sid, 0x15, cfg_.p, cfg_.rw_timeout_ms)
+              && feetech_write_byte(sid, 0x17, cfg_.i, cfg_.rw_timeout_ms)
+              && feetech_write_byte(sid, 0x16, cfg_.d, cfg_.rw_timeout_ms);
+        if (!ret) {
+            return ret;
+        }
+    }
+    return true;
+}
+
 bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms) {
   if (!ensure_connected_()) return false;
 
@@ -575,7 +594,7 @@ bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
     }
     std::cout << "]" << std::endl;
 
-    if (!write_all_positions(target_pos_tic, cfg_.read_timeout_ms)) {
+    if (!write_all_positions(target_pos_tic, cfg_.rw_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
       return false;
     }
@@ -589,7 +608,7 @@ bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
                   .q = Eigen::VectorXd::Zero(cfg_.ids.size()),
                   .dq = Eigen::VectorXd::Zero(cfg_.ids.size()),
                   .ddq = Eigen::VectorXd::Zero(cfg_.ids.size())};
-    if (!read_all_states(cfg_.read_timeout_ms, pos_unit, js.q, js.dq)) {
+    if (!read_all_states(cfg_.rw_timeout_ms, pos_unit, js.q, js.dq)) {
       std::fprintf(stderr,
                    "execute_traj_full(deque): read_all_states failed "
                    "after waypoint %zu\n",
