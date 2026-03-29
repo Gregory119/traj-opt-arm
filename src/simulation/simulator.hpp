@@ -26,6 +26,8 @@ public:
 
     void setTrajectory(DiscreteJointStateTraj target_traj);
 
+    void setCsvRecordFileName(const std::string& name);
+    
     void run();
 
 private:
@@ -97,5 +99,5 @@ private:
     // recorded actual trajectory
     DiscreteJointStateTraj m_traj_record;
 
-    const std::string m_record_filename_csv;
+    std::string m_record_filename_csv;
 };

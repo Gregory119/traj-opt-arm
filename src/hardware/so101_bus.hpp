@@ -44,12 +44,14 @@ public:
       std::array<uint8_t, 6> ids{{1, 2, 3, 4, 5, 6}};
       Calibration calibration;
 
-    //flags
-    bool ping_on_connect{true};
-    bool enable_state_poll{false}; 
+    // flags
     bool record_timing_stats{false};
 
     int read_timeout_ms{1};
+
+      // int settle_dur_ms{
+      // int settle_read_state_period_ms{20.0};
+      
   };
 
 
@@ -66,12 +68,14 @@ public:
 
   bool read_reply(uint8_t expected_id,int timeout_ms,ReplyPacket& reply);
 
-    /*
-     * @brief Execute a trajectory expressed as TrajElement waypoints.
-     *
-     * @param unit Unit of the trajectory positions.
-     */
-    bool execute_traj_full(const DiscreteJointStateTraj& traj, const PosUnit pos_unit);
+  /*
+   * @brief Execute a trajectory expressed as TrajElement waypoints.
+   *
+   * @param unit Unit of the trajectory positions.
+   */
+  bool execute_traj_full(const DiscreteJointStateTraj &traj,
+                         const PosUnit pos_unit,
+                         DiscreteJointStateTraj& meas_traj);
 
   static int  open_port_1Mbps(const char* path);
 
@@ -80,7 +84,7 @@ public:
   [[nodiscard]] bool feetech_write_bytes(uint8_t id, uint8_t start_address, const uint8_t* data, size_t data_len,
                            int timeout_ms, uint8_t instruc_code, uint8_t* out_error);
   [[nodiscard]] bool feetech_read_bytes(uint8_t id, uint8_t start_address, std::vector<uint8_t>& out, int timeout_ms, uint8_t& out_error);
-  [[nodiscard]] bool feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int timeout_ms);
+  [[nodiscard]] bool feetech_read_state_basic(uint8_t id, ServoStateBasic& out, int timeout_ms);
 
     /*
      * This function uses the 'SYNC WRITE' functionality in the message protocol,
@@ -91,9 +95,15 @@ public:
      */
   [[nodiscard]] bool write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms);
 
-  [[nodiscard]] bool read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_ms);
+    /*
+     * Output position and velocity are in the specified units.
+     */
+  [[nodiscard]] bool read_all_states(const int timeout_ms,
+                                     const PosUnit unit,
+                                     Eigen::VectorXd &pos,
+                                     Eigen::VectorXd &vel);
 
-private:
+  private:
   class Port {
   public:
     Port() = default;

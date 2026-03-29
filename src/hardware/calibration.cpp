@@ -127,6 +127,24 @@ int Calibration::posToTic(const double pos,
     return pos_tic;
 }
 
+double Calibration::ticToPos(const int pos_tic,
+                             const int sid,
+                             const PosUnit unit) const
+{
+    double unit_p_rev{};
+    switch (unit) {
+        case PosUnit::RADIAN:
+            unit_p_rev = 2 * std::numbers::pi;
+            break;
+        case PosUnit::DEGREE:
+            unit_p_rev = 360.0;
+            break;
+    }
+    const double unit_p_tic = unit_p_rev / static_cast<double>(g_tic_p_rev);
+    const double pos_unit = (pos_tic - getZeroTic(sid)) * unit_p_tic;
+    return pos_unit;
+}
+
 int Calibration::getZeroTic(const int sid) const
 {
     if (!m_pos_tic_ranges.contains(sid)) {

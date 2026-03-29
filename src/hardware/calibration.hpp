@@ -38,6 +38,13 @@ public:
                  const int sid,
                  const PosUnit unit = PosUnit::RADIAN) const;
 
+    /*
+     * @param unit Unit of the input position.
+     */
+    double ticToPos(const int pos_tic,
+                    const int sid,
+                    const PosUnit unit = PosUnit::RADIAN) const;
+
     size_t size() const
     {
         return m_pos_tic_ranges.size();

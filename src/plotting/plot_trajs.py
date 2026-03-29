@@ -103,17 +103,18 @@ def calc_err_traj(target_state_traj, true_state_traj):
     return err_traj
 
 
-def plot_state_traj_sim_err(path_sample_state_traj: Path,
-                            path_sim_state_traj: Path,
-                            algorithm_name: str):
+def plot_state_traj_err(path_target_state_traj: Path,
+                        path_true_state_traj: Path,
+                        algorithm_name: str,
+                        name: str):
     """Plot the joint state trajectory errors between the target trajectory and
-    the actual simulated trajectory."""
+    the true trajectory."""
     # read data
-    sample_state_traj = pd.read_csv(path_sample_state_traj).to_numpy()
-    sim_state_traj = pd.read_csv(path_sim_state_traj).to_numpy()
+    target_state_traj = pd.read_csv(path_target_state_traj).to_numpy()
+    true_state_traj = pd.read_csv(path_true_state_traj).to_numpy()
     
-    state_err_traj = calc_err_traj(target_state_traj=sample_state_traj,
-                                   true_state_traj=sim_state_traj)
+    state_err_traj = calc_err_traj(target_state_traj=target_state_traj,
+                                   true_state_traj=true_state_traj)
     
     # each row is: [time, q, dq, ddq] where q, dq, and ddq are row vectors, each
     # with as many elements as there are joints
@@ -128,7 +129,38 @@ def plot_state_traj_sim_err(path_sample_state_traj: Path,
         for j in range(num_joints):
             ax.plot(state_err_traj[:,0], state_err_traj[:, i*num_joints + j + 1], label=" {}[{}]".format(joint_label[i], j))
 
-        ax.set_title(f"{algorithm_name} Collocation Joint {joint_title_names[i]} Trajectory")
+        ax.set_title(f"{algorithm_name} Collocation {joint_title_names[i]} Trajectory on {name}")
+        ax.set_xlabel("time [s]")
+        ax.grid(True)
+        ax.legend()
+        fig_ax_tuples.append((fig, ax))
+    return fig_ax_tuples
+
+
+def plot_state_traj_comp(path_target_state_traj: Path,
+                         path_true_state_traj: Path,
+                         algorithm_name: str,
+                         name: str):
+    """Plot the target and true joint state trajectories for comparison."""
+    # read data
+    df_target_state_traj = pd.read_csv(path_target_state_traj)
+    df_true_state_traj = pd.read_csv(path_true_state_traj)
+    
+    # each row is: [time, q, dq, ddq] where q, dq, and ddq are row vectors, each
+    # with as many elements as there are joints
+    
+    num_joints = int((len(df_target_state_traj.columns) - 1) / 3)
+    
+    fig_ax_tuples = []
+    joint_label = ["q", "dq", "ddq"]
+    joint_title_names = ["Position", "Velocity", "Acceleration"]
+    for i in range(len(joint_label)):
+        fig, ax = plt.subplots()
+        for j in range(num_joints):
+            ax.plot(df_target_state_traj.time, df_target_state_traj.iloc[:, i*num_joints + j + 1], label="target {}[{}]".format(joint_label[i], j))
+            ax.plot(df_true_state_traj.time, df_true_state_traj.iloc[:, i*num_joints + j + 1], label="{} {}[{}]".format(name, joint_label[i], j))
+
+        ax.set_title(f"{algorithm_name} Collocation {joint_title_names[i]} Trajectory on {name}")
         ax.set_xlabel("time [s]")
         ax.grid(True)
         ax.legend()
@@ -199,29 +231,48 @@ def main():
     filename_sample_ctrl_traj = f"sample-ctrl-traj-{algs_lower}-{args.model}.csv"
     filename_col_state_bounds_traj = f"state-traj-bounds-{algs_lower}-{args.model}.csv"
     filename_col_ctrl_bounds_traj = f"ctrl-traj-bounds-{algs_lower}-{args.model}.csv"
-    filename_sim_state_traj = "sim-state-traj.csv"
+    filename_sim_state_traj = f"sim-record-state-traj-{algs_lower}-{args.model}.csv"
+    filename_hw_state_traj = f"hw-record-state-traj-{algs_lower}-{args.model}.csv"
 
     # plots
 
-    fig_ax_tuples = plot_state_traj(
-        path_collocation_state_traj=args.traj_data_dir / filename_collocation_state_traj,
-        path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
-        path_state_bounds_traj=args.traj_data_dir / filename_col_state_bounds_traj,
-        algorithm_name=args.algorithm
+    # fig_ax_tuples = plot_state_traj(
+    #     path_collocation_state_traj=args.traj_data_dir / filename_collocation_state_traj,
+    #     path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
+    #     path_state_bounds_traj=args.traj_data_dir / filename_col_state_bounds_traj,
+    #     algorithm_name=args.algorithm
+    # )
+
+    # fig_ax_tuples = plot_state_traj_err(
+    #     path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
+    #     path_true_state_traj = args.traj_data_dir / filename_sim_state_traj,
+    #     algorithm_name=args.algorithm,
+    #     name="Simulation"
+    # )
+
+    # fig_ax_tuples += plot_state_traj_comp(path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
+    #                                       path_true_state_traj=args.traj_data_dir / filename_sim_state_traj,
+    #                                       algorithm_name=args.algorithm,
+    #                                       name="Simulation")
+
+    fig_ax_tuples = plot_state_traj_err(
+        path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
+        path_true_state_traj = args.traj_data_dir / filename_hw_state_traj,
+        algorithm_name=args.algorithm,
+        name="Hardware"
     )
 
-    fig_ax_tuples += plot_state_traj_sim_err(
-        path_sample_state_traj=args.traj_data_dir / filename_sample_state_traj,
-        path_sim_state_traj = args.traj_data_dir / filename_sim_state_traj,
-        algorithm_name=args.algorithm
-    )
+    fig_ax_tuples += plot_state_traj_comp(path_target_state_traj=args.traj_data_dir / filename_sample_state_traj,
+                                          path_true_state_traj=args.traj_data_dir / filename_hw_state_traj,
+                                          algorithm_name=args.algorithm,
+                                          name="Hardware")
     
-    fig_ax_tuples += plot_ctrl_traj(
-        path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
-        path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
-        path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
-        algorithm_name=args.algorithm
-    )
+    # fig_ax_tuples += plot_ctrl_traj(
+    #     path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
+    #     path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
+    #     path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
+    #     algorithm_name=args.algorithm
+    # )
     
     plt.show()
 

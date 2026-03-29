@@ -98,6 +98,11 @@ void Simulator::setTrajectory(DiscreteJointStateTraj target_traj)
     m_target_traj = m_target_traj_orig;
 }
 
+void Simulator::setCsvRecordFileName(const std::string& name)
+{
+    m_record_filename_csv = name;
+}
+
 void Simulator::run()
 {
     while (!glfwWindowShouldClose(m_window)) {

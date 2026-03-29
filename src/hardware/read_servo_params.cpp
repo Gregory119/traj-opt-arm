@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
         for (int id = 1; id <= 6; ++id) { //iterate through all 6 servo IDs(generalize for any ID set later)
             //add class object here too
             SO101Bus::ServoStateBasic st{}; // initialize ServoStateBasic object. Data written to here
-            bool ok = arm.feetech_read_state_basic((uint8_t)id, &st, 40); //read the state for the current servo ID, returns true if valid packet is received
+            bool ok = arm.feetech_read_state_basic((uint8_t)id, st, 40); //read the state for the current servo ID, returns true if valid packet is received
 
             if (!ok) { // execute on failed read
                 // no reply then show ping
