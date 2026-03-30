@@ -94,15 +94,18 @@ bool SO101Bus::connect() {
     return false;
   }
 
-  //if flag is set to true, ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
+  // ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
   // return false if one doesn't reply
-  if(cfg_.ping_on_connect){
-      if (!SO101Bus::ping_all()) {
-        std::fprintf(stderr, "one or more servos did not reply to ping\n");
-        port_.close();
-        return false;
-      }
+  if (!SO101Bus::ping_all()) {
+    std::fprintf(stderr, "one or more servos did not reply to ping\n");
+    port_.close();
+    return false;
   }
+
+  if (!write_gains()) {
+    return false;
+  }
+
   return true;
 }
 
@@ -123,7 +126,7 @@ bool SO101Bus::ensure_connected_() {
 bool SO101Bus::ping_all() {
   if (!ensure_connected_()) return false;
   for (uint8_t id : cfg_.ids) {
-    if (!feetech_ping(id, cfg_.read_timeout_ms)) return false;
+    if (!feetech_ping(id, cfg_.rw_timeout_ms)) return false;
   }
   return true;
 }
@@ -409,11 +412,8 @@ bool SO101Bus::feetech_read_bytes(uint8_t id, uint8_t start_address,
     return true;
 }
 
-bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int timeout_ms) {
+bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic& out, int timeout_ms) {
     const int fd = port_.fd();
-    if (!out) { errno = EINVAL; return false; } //error code if out address is not valid
-
-
 
     // position documented at 0x38 2 bytes
     const uint8_t START = 0x38;
@@ -423,38 +423,62 @@ bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int ti
 
     uint8_t err = 0xFF; // initialize error byte
     if (!feetech_read_bytes(id, START, tmp, timeout_ms, err)) {
-        out->error = err; // write error code to ServoStateBasic object
+        out.error = err; // write error code to ServoStateBasic object
         return false; // return false when a read fail occurs
     }
-    out->error = err; // copy error byte to ServoStateBasic object
-    if (N) std::memcpy(out->raw, tmp.data(), N);
+    out.error = err; // copy error byte to ServoStateBasic object
+    if (N) std::memcpy(out.raw, tmp.data(), N);
 
     auto to_u16 = [&](int idx) -> uint16_t { // 16 bit unsigned int from combined bytes 
-        return (uint16_t)out->raw[idx] | ((uint16_t)out->raw[idx + 1] << 8); // combine low and high bytes into a 16 bit unsinged int
+        return (uint16_t)out.raw[idx] | ((uint16_t)out.raw[idx + 1] << 8); // combine low and high bytes into a 16 bit unsinged int
     };
     auto to_s16 = [&](int idx) -> int16_t { 
         return (int16_t)to_u16(idx); //casts unsigned int into signed
     };
 
     // mapping
-    out->present_position     = to_u16(0); // 0x38 to 0x39
-    out->present_speed        = to_s16(2);  // 0x3A to 0x3B
-    out->present_load         = to_s16(4); // 0x3C to 0x3D
-    out->present_voltage_raw  = out->raw[6]; // 0x3E
-    out->present_temp_c       = out->raw[7]; // 0x3F
+    out.present_position     = to_u16(0); // 0x38 to 0x39
+    out.present_speed        = to_s16(2);  // 0x3A to 0x3B
+    out.present_load         = to_s16(4); // 0x3C to 0x3D
+    out.present_voltage_raw  = out.raw[6]; // 0x3E
+    out.present_temp_c       = out.raw[7]; // 0x3F
 
     return true;
 }
 
-bool SO101Bus::read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_ms) {
-  if (!out) { errno = EINVAL; return false; }
-
-  for (int j = 0; j < 6; ++j) {
-    if (!feetech_read_state_basic(cfg_.ids[j], &(*out)[j], timeout_ms)) {
-      return false;
+bool SO101Bus::read_all_states(const int timeout_ms,
+                               const PosUnit unit,
+                               Eigen::VectorXd &pos,
+                               Eigen::VectorXd &vel)
+{
+    for (int j = 0; j < 6; ++j) {
+        ServoStateBasic state;
+        if (!feetech_read_state_basic(cfg_.ids[j], state, timeout_ms)) {
+            return false;
+        }
+        pos(j) = cfg_.calibration.ticToPos(state.present_position,
+                                           cfg_.ids[j],
+                                           unit);
+        // although the speed measurement is in tics per second, the conversion
+        // to unit per second is the same as the position conversion
+        vel(j)
+            = cfg_.calibration.ticToPos(state.present_speed, cfg_.ids[j], unit);
     }
-  }
-  return true;
+    return true;
+}
+
+bool SO101Bus::write_gains()
+{
+    for (int sid : cfg_.ids) {
+        const bool ret
+            = feetech_write_byte(sid, 0x15, cfg_.p, cfg_.rw_timeout_ms)
+              && feetech_write_byte(sid, 0x17, cfg_.i, cfg_.rw_timeout_ms)
+              && feetech_write_byte(sid, 0x16, cfg_.d, cfg_.rw_timeout_ms);
+        if (!ret) {
+            return ret;
+        }
+    }
+    return true;
 }
 
 bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms) {
@@ -512,7 +536,8 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
 }
 
 bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
-                                 const PosUnit pos_unit)
+                                 const PosUnit pos_unit,
+                                 DiscreteJointStateTraj& meas_traj)
 {
   if (traj.empty()) return true;
 
@@ -534,8 +559,7 @@ bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
     // sleep until the scheduled send time
     double rel_s = e.time - t0;
     if (rel_s < 0.0) rel_s = 0.0;
-    const auto send_tp = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                                   std::chrono::duration<double>(rel_s));
+    const auto send_tp = start + std::chrono::duration<double>(rel_s);
     std::this_thread::sleep_until(send_tp);
     
     if (cfg_.record_timing_stats) {
@@ -570,22 +594,34 @@ bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
     }
     std::cout << "]" << std::endl;
 
-    if (!write_all_positions(target_pos_tic, cfg_.read_timeout_ms)) {
+    if (!write_all_positions(target_pos_tic, cfg_.rw_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
       return false;
     }
     last_target_pos_tic = target_pos_tic;
 
-    if (cfg_.enable_state_poll) {
-      std::array<ServoStateBasic, 6> st{};
-      if (!read_all_states(&st, cfg_.read_timeout_ms)) {
-        std::fprintf(stderr,
-                     "execute_traj_full(deque): read_all_states failed after waypoint %zu\n",
-                     i);
-        return false;
-      }
+    // use timestamp before all reads
+    const std::chrono::duration<double> ts
+        = std::chrono::steady_clock::now() - start;
+
+    JointState js{.time = ts.count(),
+                  .q = Eigen::VectorXd::Zero(cfg_.ids.size()),
+                  .dq = Eigen::VectorXd::Zero(cfg_.ids.size()),
+                  .ddq = Eigen::VectorXd::Zero(cfg_.ids.size())};
+    if (!read_all_states(cfg_.rw_timeout_ms, pos_unit, js.q, js.dq)) {
+      std::fprintf(stderr,
+                   "execute_traj_full(deque): read_all_states failed "
+                   "after waypoint %zu\n",
+                   i);
+      return false;
     }
-      
+    // approximate acceleration using first order derivative of velocity
+    if (!meas_traj.empty()) {
+      js.ddq
+          = (js.dq - meas_traj.back().dq) / (js.time - meas_traj.back().time);
+    }
+
+    meas_traj.push_back(std::move(js));
   }
 
   if (cfg_.record_timing_stats) {

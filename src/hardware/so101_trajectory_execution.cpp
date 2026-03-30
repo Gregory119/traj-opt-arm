@@ -35,7 +35,8 @@ int main(int argc, char **argv)
                      .finished()});
     }
 
-    if (!bus.execute_traj_full(traj, PosUnit::RADIAN)) {
+    DiscreteJointStateTraj meas_traj;
+    if (!bus.execute_traj_full(traj, PosUnit::RADIAN, meas_traj)) {
         std::cerr << "trajectory execution failed\n";
         return 2;
     }

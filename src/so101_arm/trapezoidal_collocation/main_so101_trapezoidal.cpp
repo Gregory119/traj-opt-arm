@@ -139,7 +139,7 @@ int main(int argc, char **argv)
     // control bounds
     const int control_len = 6;
     const int num_control_vars = control_len * (num_segments + 1);
-    const double rated_torque_kgcm = 10;
+    const double rated_torque_kgcm = 10 / 1.2;
     const double gravity = 9.81;
     const double max_control_force = rated_torque_kgcm * gravity / 100.0;
     ifopt::Component::VecBound control_bounds
@@ -261,6 +261,7 @@ int main(int argc, char **argv)
     ///////////////////////////////////////////////////////////////////////
     // Send trajectory to simulated robot
     //////////////////////////////////////////////////////////////////////
+    Simulator::getInstance()->setCsvRecordFileName("sim-record-state-traj-trapezoidal-so101.csv");
     Simulator::getInstance()->setTrajectory(sampled_state_traj);
 
     Simulator::getInstance()->run();
@@ -282,10 +283,14 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (!bus.execute_traj_full(sampled_state_traj, PosUnit::RADIAN)) {
+    DiscreteJointStateTraj meas_traj;
+    if (!bus.execute_traj_full(sampled_state_traj, PosUnit::RADIAN, meas_traj)) {
         std::cerr << "trajectory execution failed\n";
         return 2;
     }
+
+    saveDiscreteJointStateTrajCsv("hw-record-state-traj-trapezoidal-so101.csv",
+                                  meas_traj);
 
     return 0;
 }
