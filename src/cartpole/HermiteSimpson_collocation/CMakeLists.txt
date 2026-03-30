@@ -1,0 +1,3 @@
+add_executable(main_cartpole_HS main_cartpole_hs.cpp hermite_simpson_collocation_constraints.cpp control_effort_hs_cost.cpp)
+target_include_directories(main_cartpole_HS PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(main_cartpole_HS PRIVATE ipopt ifopt::ifopt_ipopt pinocchio::pinocchio splines traj_utils rapidcsv)
