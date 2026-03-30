@@ -152,7 +152,7 @@ void HermiteMidpointConstraints::FillJacobianWrt(
     triplet_list.reserve(m_state_len * var_type_len * num_nonzero_submatrices
                          * num_defect_vec_eqns);
 
-    // k indexes a trajectory segment
+    // k indexes a trajectory segment,
     // j indexes the variable block whose contribution is being inserted into
     // the full jacobian for segment k.
     //
