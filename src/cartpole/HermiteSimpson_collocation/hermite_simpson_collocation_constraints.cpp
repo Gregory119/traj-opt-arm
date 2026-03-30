@@ -179,7 +179,9 @@ void HermiteMidpointConstraints::FillJacobianWrt(
         for (size_t j = k; j < j_max; ++j) {
             // j is used here instead of k because the loop bounds above
             // guarantee that j already refers to the correct variable block
-            // midpoint  j = k is usd
+            //
+            // midpoint  j = k is usd. 
+            //
             // knot j = k and j = k + 1 are used.
             auto statej
                 = is_mid
@@ -453,7 +455,7 @@ void SimpsonDefectConstraints::FillJacobianWrt(
     triplet_list.reserve(m_state_len * var_type_len * num_nonzero_submatrices
                          * num_defect_vec_eqns);
 
-    // k indexes a trajectory segment
+    // k indexes a trajectory segment,
     // j indexes the variable block whose contribution is being inserted into
     // the full jacobian for segment k.
     //
@@ -480,7 +482,9 @@ void SimpsonDefectConstraints::FillJacobianWrt(
         for (size_t j = k; j < j_max; ++j) {
             // j is used here instead of k because the loop bounds above
             // guarantee that j already refers to the correct variable block
+            //
             // midpoint  j = k is usd.
+            //
             // knot j = k and j = k + 1 are used.
             auto statej
                 = is_mid
