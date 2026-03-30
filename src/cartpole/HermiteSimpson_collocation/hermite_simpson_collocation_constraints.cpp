@@ -171,7 +171,7 @@ void HermiteMidpointConstraints::FillJacobianWrt(
                              || var_type == VariableType::CONTROL_MID);
 
         // midpoint variable sets have one block per segment so only j = k is
-        // vald
+        // vald.
         // knot variable sets have two neighboring blocks for
         // segment k, j = k an j = k + 1.
         const size_t j_max = is_mid ? (k + 1) : (k + 2);
