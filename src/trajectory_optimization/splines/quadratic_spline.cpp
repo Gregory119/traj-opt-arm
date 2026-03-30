@@ -16,7 +16,35 @@ QuadraticSpline::QuadraticSpline(std::vector<Eigen::VectorXd> func_vals,
     if (m_func_vals.empty()) {
         throw std::invalid_argument("QuadraticSpline. empty values.");
     }
-    assert(func_vals.size() == grad_vals.size());
+    //assert(func_vals.size() == grad_vals.size());
+    if (m_func_vals.size() < 2) {
+        throw std::invalid_argument("QuadraticSpline. Need at least 2 knot values.");
+    }
+
+    if (m_grad_vals.size() != m_func_vals.size() - 1) {
+        throw std::invalid_argument(
+            "QuadraticSpline. midpoint/value count must be exactly one less than knot count.");
+    }
+
+    const Eigen::Index dim = m_func_vals.front().size();
+    if (dim == 0) {
+        throw std::invalid_argument("QuadraticSpline. knot vectors must be non-empty.");
+    }
+
+    for (size_t i = 0; i < m_func_vals.size(); ++i) {
+        if (m_func_vals[i].size() != dim) {
+            throw std::invalid_argument(
+                "QuadraticSpline. all knot vectors must have the same size.");
+        }
+    }
+
+    for (size_t i = 0; i < m_grad_vals.size(); ++i) {
+        if (m_grad_vals[i].size() != dim) {
+            throw std::invalid_argument(
+                "QuadraticSpline. all midpoint vectors must have the same size as the knot vectors.");
+        }
+    }
+
 }
 
 Eigen::VectorXd QuadraticSpline::getValue(const double time) const
@@ -52,10 +80,17 @@ Eigen::VectorXd QuadraticSpline::getValue(const double time) const
     //           << ", ti=" << ti << ", beta=" << beta << ", dt=" << dt
     //           << ", dt_max=" << dt_max << std::endl;
 
+    /*
     // quadratic polynomial interpolation
     return interp_quad(m_func_vals[i_start],      // xi
                        m_grad_vals[i_start],      // dxi
                        m_grad_vals[i_start + 1],  // dxf
                        dt_max,
                        dt);
+    */
+    return interp_quad_midpoint(m_func_vals[i_start],      // x_i
+                            m_grad_vals[i_start],      // x_c (midpoint value)
+                            m_func_vals[i_start + 1],  // x_{i+1}
+                            dt_max,
+                            dt);
 }
