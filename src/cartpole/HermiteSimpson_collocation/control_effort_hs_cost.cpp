@@ -64,9 +64,6 @@ void ControlEffortHermSimpCost::FillJacobianBlock(
         // J_k = (dt/6) * (||u_k||^2 + 4||u_c,k||^2 + ||u_{k+1}||^2)
         // dJ_k/du_{k}   = (dt/3) * u_{k}
         // dJ_k/du_{k+1} = (dt/3) * u_{k+1}
-        //
-        // interior knot controls belong to two segments so their
-        // total coefficient becomes 2*dt/3
         for (int k = 0; k < num_segments; ++k) {
             const auto uk = ctrl_vars(Eigen::seqN(k * m_ctrl_len, m_ctrl_len));
             const auto uk1
