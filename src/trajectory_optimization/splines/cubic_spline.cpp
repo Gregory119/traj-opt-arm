@@ -58,7 +58,7 @@ Eigen::VectorXd CubicSpline::getValue(const double time) const
            << ", end time: " << end_time;
         throw std::invalid_argument(os.str());
     }
-
+    // Get the index to the start time of the segment
     const int num_segments = static_cast<int>(m_func_vals.size()) - 1;
     const double alpha = (time - m_start_time) / m_duration;
     const int i_start = static_cast<int>(alpha * num_segments);
