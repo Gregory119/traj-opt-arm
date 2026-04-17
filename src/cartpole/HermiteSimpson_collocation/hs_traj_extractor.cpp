@@ -86,9 +86,9 @@ DiscreteJointDataTraj HermSimpTrajExtractor::createCollocationCtrlTraj(
 {
     /*
     Loop through the control and midpoint control variables, 
-    but handle the last state variable outside the loop. 
-    This is because there is one less midpoint state variable 
-    compared to the state variables at the knot points.
+    but handle the last control variable outside the loop. 
+    This is because there is one less midpoint control variable 
+    compared to the control variables at the knot points.
     */
     DiscreteJointDataTraj traj;
     const int num_samples = m_ctrl_vars.size() / m_ctrl_len;
