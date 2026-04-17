@@ -1,4 +1,3 @@
-cmake_minimum_required(VERSION 3.16)
 project(traj_opt_arm LANGUAGES CXX)
 
 ########### build fails without this #########
