@@ -69,7 +69,10 @@ T interp_quad_midpoint(const T &xi,
     }
 
     const double s = dt / dt_max;
-
+     /*
+     * Reference: Kelly, "An Introduction to Trajectory Optimization:
+     * How to Do Your Own Direct Collocation".
+     */
     return (2.0 * s * s - 3.0 * s + 1.0) * xi
          + (4.0 * s - 4.0 * s * s) * xc
          + (2.0 * s * s - s) * xf;

@@ -49,7 +49,10 @@ CubicSpline::CubicSpline(std::vector<Eigen::VectorXd> func_vals,
 }
 
 Eigen::VectorXd CubicSpline::getValue(const double time) const
-{
+{    /*
+     * Reference: Kelly, "An Introduction to Trajectory Optimization:
+     * How to Do Your Own Direct Collocation".
+     */
     const double end_time = m_start_time + m_duration;
     if ((time < m_start_time) || (time > end_time)) {
         std::ostringstream os;
