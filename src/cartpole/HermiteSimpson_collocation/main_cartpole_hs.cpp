@@ -16,7 +16,7 @@
 #include "trajectory_variables.hpp"
 
 #include "save_trajectory.hpp"
-//#include "robot_dynamics_hs.hpp"
+
 
 namespace pin = pinocchio;
 
