@@ -21,7 +21,7 @@ public:
                 double duration);
 
 
-    // Get the value of the splinea at a particular time.
+    // Get the value of the spline at a particular time.
     Eigen::VectorXd getValue(double time) const;
 
 private:
