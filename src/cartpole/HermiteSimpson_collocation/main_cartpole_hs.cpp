@@ -718,50 +718,6 @@ int main(int argc, char **argv)
     const Eigen::VectorXd solved_control_vars = traj_control_vars->GetValues();
     const Eigen::VectorXd solved_control_mid_vars
         = traj_control_mid_vars->GetValues();
-/*
-    const Eigen::VectorXd traj_dstate_dt_vars
-        = createStateGradTimeVars(start_time,
-                                  solved_state_vars,
-                                  solved_state_mid_vars,
-                                  state_len,
-                                  solved_control_vars,
-                                  solved_control_mid_vars,
-                                  control_len,
-                                  dt_segment,
-                                  model);
-
-    const CubicSpline state_spline = createStateSpline(start_time,
-                                                       traj_dur,
-                                                       solved_state_vars,
-                                                       state_len,
-                                                       traj_dstate_dt_vars);
-
-    const QuadraticSpline dstate_dt_spline
-        = createStateGradTimeSpline(start_time,
-                                    traj_dur,
-                                    traj_dstate_dt_vars,
-                                    state_len);
-
-    const DiscreteJointStateTraj sample_traj = createSampleTraj(start_time,
-                                                    sample_period,
-                                                    traj_dur,
-                                                    state_spline,
-                                                    dstate_dt_spline);
-
-    const DiscreteJointStateTraj collocation_traj
-        = createCollocationTraj(start_time,
-                                dt_segment,
-                                solved_state_vars,
-                                solved_state_mid_vars,
-                                state_len,
-                                solved_control_vars,
-                                solved_control_mid_vars,
-                                control_len,
-                                model);
-
-    saveSampleTrajCsv("cartpole_hs_sample_traj.csv", sample_traj);
-    saveSampleTrajCsv("cartpole_hs_collocation_traj.csv", collocation_traj);
-*/
 
     ///////////////////////////////////////////////////////////////////////
     // Extract/create trajectories and save to files
