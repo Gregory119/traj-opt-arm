@@ -30,6 +30,7 @@ def plot_state_traj(path_collocation_state_traj: Path,
     fig_ax_tuples = []
     joint_label = ["q", "dq", "ddq"]
     joint_title_names = ["Position", "Velocity", "Acceleration"]
+    unit_names = ["rad", "rad/s", "rad/s^2"]
     for i in range(len(joint_label)):
         fig, ax = plt.subplots()
         for j in range(num_joints):
@@ -44,7 +45,7 @@ def plot_state_traj(path_collocation_state_traj: Path,
                 continue
 
             # Only plot the path bounds once (same for every joint)
-            if j != num_joints-1:
+            if j != 0 and j != 5:
                 continue
 
             inf = 1e6
@@ -63,15 +64,20 @@ def plot_state_traj(path_collocation_state_traj: Path,
             df_high = df_high[df_high[col_high] <= inf]
 
             # plot bounds
+            label_info = f"{joint_label[i]}[0] to {joint_label[i]}[4]"
+            if j == 5:
+                label_info = f"{joint_label[i]}[5]"
             if not df_low.empty:
-                ax.plot(df_low.time, df_low.iloc[:, 1], 'D', label="min.")
+                ax.plot(df_low.time, df_low.iloc[:, 1], label=f"min. {label_info}")
             if not df_high.empty:
-                ax.plot(df_high.time, df_high.iloc[:, 1], 'D', label="max.")
+                ax.plot(df_high.time, df_high.iloc[:, 1], label=f"max. {label_info}")
 
         ax.set_title(f"Target {algorithm_name} Collocation Joint {joint_title_names[i]} Trajectory")
         ax.set_xlabel("time [s]")
+        ax.set_ylabel("joint {} [{}]".format(joint_title_names[i].lower(), unit_names[i]))
         ax.grid(True)
         ax.legend()
+        fig.savefig(f"target-{algorithm_name}-collocation-joint-{joint_title_names[i]}-trajectory".lower())
         fig_ax_tuples.append((fig, ax))
     return fig_ax_tuples
     
@@ -124,15 +130,18 @@ def plot_state_traj_err(path_target_state_traj: Path,
     fig_ax_tuples = []
     joint_label = ["q", "dq", "ddq"]
     joint_title_names = ["Position Error", "Velocity Error", "Acceleration Error"]
+    unit_names = ["rad", "rad/s", "rad/s^2"]
     for i in range(len(joint_label)):
         fig, ax = plt.subplots()
         for j in range(num_joints):
             ax.plot(state_err_traj[:,0], state_err_traj[:, i*num_joints + j + 1], label=" {}[{}]".format(joint_label[i], j))
 
-        ax.set_title(f"{algorithm_name} Collocation {joint_title_names[i]} Trajectory on {name}")
+        ax.set_title(f"{algorithm_name} Collocation {joint_title_names[i]} Trajectory ({name})")
         ax.set_xlabel("time [s]")
+        ax.set_ylabel("joint {} [{}]".format(joint_title_names[i].lower(), unit_names[i]))
         ax.grid(True)
         ax.legend()
+        fig.savefig(f"{algorithm_name}-collocation-{joint_title_names[i]}-trajectory-{name}".lower())
         fig_ax_tuples.append((fig, ax))
     return fig_ax_tuples
 
@@ -158,9 +167,9 @@ def plot_state_traj_comp(path_target_state_traj: Path,
         fig, ax = plt.subplots()
         for j in range(num_joints):
             ax.plot(df_target_state_traj.time, df_target_state_traj.iloc[:, i*num_joints + j + 1], label="target {}[{}]".format(joint_label[i], j))
-            ax.plot(df_true_state_traj.time, df_true_state_traj.iloc[:, i*num_joints + j + 1], label="{} {}[{}]".format(name, joint_label[i], j))
+            ax.plot(df_true_state_traj.time, df_true_state_traj.iloc[:, i*num_joints + j + 1], label="actual {}[{}]".format(joint_label[i], j))
 
-        ax.set_title(f"{algorithm_name} Collocation {joint_title_names[i]} Trajectory on {name}")
+        ax.set_title(f"Target and Actual {algorithm_name} Collocation {joint_title_names[i]} Trajectories ({name})")
         ax.set_xlabel("time [s]")
         ax.grid(True)
         ax.legend()
