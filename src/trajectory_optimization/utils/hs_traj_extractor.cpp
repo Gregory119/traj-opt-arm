@@ -34,6 +34,12 @@ HermSimpTrajExtractor::HermSimpTrajExtractor(
 DiscreteJointStateTraj HermSimpTrajExtractor::createCollocationStateTraj(
     const pin::Model &model)
 {
+    /*
+    Loop through the state and midpoint state variables,
+    but handle the last state variable outside the loop.
+    This is because there is one less midpoint state variable
+    compared to the state variables at the knot points.
+    */
     DiscreteJointStateTraj traj;
     const int num_segments = m_state_mid_vars.size() / m_state_len;
 
@@ -79,6 +85,12 @@ DiscreteJointStateTraj HermSimpTrajExtractor::createCollocationStateTraj(
 DiscreteJointDataTraj HermSimpTrajExtractor::createCollocationCtrlTraj(
     const pinocchio::Model &model)
 {
+    /*
+    Loop through the state and midpoint state variables,
+    but handle the last state variable outside the loop.
+    This is because there is one less midpoint state variable
+    compared to the state variables at the knot points.
+    */
     DiscreteJointDataTraj traj;
     const int num_segments = m_ctrl_mid_vars.size() / m_ctrl_len;
 
