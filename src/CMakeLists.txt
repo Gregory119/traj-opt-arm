@@ -1,11 +1,3 @@
-project(traj_opt_arm LANGUAGES CXX)
-
-########### build fails without this #########
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-##############################################
-
 # find libraries that should already be installed
 find_package(Threads REQUIRED)
 
