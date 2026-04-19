@@ -20,6 +20,11 @@ QuadraticSpline::QuadraticSpline(std::vector<Eigen::VectorXd> func_vals,
     if (m_func_vals.empty()) {
         throw std::invalid_argument("QuadraticSpline. empty values.");
     }
+
+    if (m_duration <= 0.0) {
+        throw std::invalid_argument(
+            "QuadraticSpline. duration must be positive.");
+    }
     // size consistency is checked below based on m_constraint_type
     if (m_func_vals.size() < 2) {
         throw std::invalid_argument("QuadraticSpline. Need at least 2 knot values.");
