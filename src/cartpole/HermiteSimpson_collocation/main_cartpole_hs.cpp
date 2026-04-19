@@ -10,13 +10,11 @@
 
 #include "control_effort_hs_cost.hpp"
 #include "hermite_simpson_collocation_constraints.hpp"
+#include "hs_traj_extractor.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
-#include "hs_traj_extractor.hpp"
-#include "trajectory_variables.hpp"
-
 #include "save_trajectory.hpp"
-
+#include "trajectory_variables.hpp"
 
 namespace pin = pinocchio;
 
@@ -305,7 +303,7 @@ void guessStateTraj(const int state_len,
                 = state_mid_init(Eigen::seqN(k * state_len, state_len));
             const double alpha_mid
                 = (static_cast<double>(k) + 0.5) / num_segments;
-             state_mid_k   = alpha_mid * (state_start - state_end) + state_start;
+            state_mid_k = alpha_mid * (state_start - state_end) + state_start;
         }
     }
     return;
@@ -413,10 +411,10 @@ QuadraticSpline createStateGradTimeSpline(
 
 // create sample trajectory
 DiscreteJointStateTraj createSampleTraj(const double start_time,
-                            const double sample_period,
-                            const double traj_dur,
-                            const CubicSpline &state_spline,
-                            const QuadraticSpline &dstate_dt_spline)
+                                        const double sample_period,
+                                        const double traj_dur,
+                                        const CubicSpline &state_spline,
+                                        const QuadraticSpline &dstate_dt_spline)
 {
     DiscreteJointStateTraj sample_traj;
     const int num_samples = static_cast<int>(traj_dur / sample_period) + 1;
@@ -468,15 +466,16 @@ void saveSampleTrajCsv(const std::string &filename,
     doc.Save(filename);
 }
 
-DiscreteJointStateTraj createCollocationTraj(const double start_time,
-                                 const double dt_segment,
-                                 const Eigen::VectorXd &traj_state_vars,
-                                 const Eigen::VectorXd &traj_state_mid_vars,
-                                 const int state_len,
-                                 const Eigen::VectorXd &traj_control_vars,
-                                 const Eigen::VectorXd &traj_control_mid_vars,
-                                 const int control_len,
-                                 const pin::Model &model)
+DiscreteJointStateTraj createCollocationTraj(
+    const double start_time,
+    const double dt_segment,
+    const Eigen::VectorXd &traj_state_vars,
+    const Eigen::VectorXd &traj_state_mid_vars,
+    const int state_len,
+    const Eigen::VectorXd &traj_control_vars,
+    const Eigen::VectorXd &traj_control_mid_vars,
+    const int control_len,
+    const pin::Model &model)
 {
     DiscreteJointStateTraj traj;
     const int num_segments = traj_state_mid_vars.size() / state_len;
@@ -708,7 +707,6 @@ int main(int argc, char **argv)
     std::cout << "Simpson defect constraint values:" << std::endl;
     std::cout << simpson_constraints->GetValues().transpose() << std::endl;
 
-
     const double start_time = 0.0;
     const double sample_period = 0.020;
 
@@ -723,16 +721,16 @@ int main(int argc, char **argv)
     // Extract/create trajectories and save to files
     //////////////////////////////////////////////////////////////////////
     HermSimpTrajExtractor traj_extractor(start_time,
-                                            traj_dur,
-                                            traj_state_vars->GetValues(),
-                                            traj_state_mid_vars->GetValues(),
-                                            state_len,
-                                            traj_control_vars->GetValues(),
-                                            traj_control_mid_vars->GetValues(),
-                                            control_len,
-                                            dt_segment,
-                                            model,
-                                            cartpoleDyn);
+                                         traj_dur,
+                                         traj_state_vars->GetValues(),
+                                         traj_state_mid_vars->GetValues(),
+                                         state_len,
+                                         traj_control_vars->GetValues(),
+                                         traj_control_mid_vars->GetValues(),
+                                         control_len,
+                                         dt_segment,
+                                         model,
+                                         cartpoleDyn);
     saveDiscreteJointStateTrajCsv(
         "collocation-state-traj-hermite-simpson-cartpole.csv",
         traj_extractor.createCollocationStateTraj(model));
@@ -741,7 +739,7 @@ int main(int argc, char **argv)
         traj_extractor.createCollocationCtrlTraj(model));
 
     // save sample trajectory to file
-    //const double sample_period = 0.020;
+    // const double sample_period = 0.020;
     saveDiscreteJointStateTrajCsv(
         "sample-state-traj-hermite-simpson-cartpole.csv",
         traj_extractor.createSampledStateTraj(sample_period));

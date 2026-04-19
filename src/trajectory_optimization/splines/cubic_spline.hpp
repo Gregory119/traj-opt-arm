@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Eigen/Core>
-
 #include <vector>
 
 class CubicSpline
@@ -19,7 +18,6 @@ public:
                 std::vector<Eigen::VectorXd> grad_vals,
                 double start_time,
                 double duration);
-
 
     // Get the value of the spline at a particular time.
     Eigen::VectorXd getValue(double time) const;
