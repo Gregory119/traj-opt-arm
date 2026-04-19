@@ -53,7 +53,16 @@ T interp_linear(const T &xi, const T &xf, const double dt_max, const double dt)
     return xi + dt / dt_max * (xf - xi);
 }
 
-
+/*
+ * Quadratic interpolation using the initial value, midpoint value, and final
+ * value.
+ *
+ * @param xi Initial value.
+ * @param xc Midpoint value.
+ * @param xf Final value.
+ * @param dt_max Time duration from start to end of polynomial.
+ * @param dt Current time from start of polynomial.
+ */
 template <typename T>
 T interp_quad_midpoint(const T &xi,
                        const T &xc,
