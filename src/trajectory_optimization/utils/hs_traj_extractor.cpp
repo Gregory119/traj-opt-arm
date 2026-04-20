@@ -1,7 +1,7 @@
 #include "hs_traj_extractor.hpp"
 
-#include <quadratic_spline.hpp>
 #include <cubic_spline.hpp>
+#include <quadratic_spline.hpp>
 
 namespace pin = pinocchio;
 
@@ -148,8 +148,11 @@ DiscreteJointDataTraj HermSimpTrajExtractor::createSampledCtrlTraj(
             m_ctrl_mid_vars(Eigen::seqN(i * m_ctrl_len, m_ctrl_len)));
     }
 
-    const QuadraticSpline ctrl_spline(
-        ctrl_knot_vals, ctrl_mid_vals, m_start_time, m_dur);
+    const QuadraticSpline ctrl_spline(ctrl_knot_vals,
+                                      ctrl_mid_vals,
+                                      QuadraticSpline::ConstraintType::Midpoint,
+                                      m_start_time,
+                                      m_dur);
 
     DiscreteJointDataTraj sampled_traj;
     const int num_samples = static_cast<int>(m_dur / sample_period) + 1;
@@ -192,8 +195,11 @@ QuadraticSpline HermSimpTrajExtractor::createDynSpline()
             m_dyn_mid_vals(Eigen::seqN(k * m_state_len, m_state_len)));
     }
 
-    return QuadraticSpline(
-        dyn_knot_vals, dyn_mid_vals, m_start_time, m_dur);
+    return QuadraticSpline(dyn_knot_vals,
+                           dyn_mid_vals,
+                           QuadraticSpline::ConstraintType::Midpoint,
+                           m_start_time,
+                           m_dur);
 }
 
 DiscreteJointStateTraj HermSimpTrajExtractor::createDiscreteJointStateTraj(
@@ -233,10 +239,10 @@ Eigen::VectorXd HermSimpTrajExtractor::createDynVals(const pin::Model &model)
     return dyn_vals;
 }
 
-
 Eigen::VectorXd HermSimpTrajExtractor::createDynMidVals(const pin::Model &model)
 {
-    Eigen::VectorXd dyn_mid_vals = Eigen::VectorXd::Zero(m_state_mid_vars.size());
+    Eigen::VectorXd dyn_mid_vals
+        = Eigen::VectorXd::Zero(m_state_mid_vars.size());
     const int num_state_mid_vecs = m_state_mid_vars.size() / m_state_len;
 
     for (int i{}; i < num_state_mid_vecs; ++i) {
@@ -244,8 +250,8 @@ Eigen::VectorXd HermSimpTrajExtractor::createDynMidVals(const pin::Model &model)
             = m_state_mid_vars(Eigen::seqN(i * m_state_len, m_state_len));
         const Eigen::VectorXd ctrl_mid
             = m_ctrl_mid_vars(Eigen::seqN(i * m_ctrl_len, m_ctrl_len));
-        const double time = m_start_time
-                          + (static_cast<double>(i) + 0.5) * m_dt_segment;
+        const double time
+            = m_start_time + (static_cast<double>(i) + 0.5) * m_dt_segment;
 
         dyn_mid_vals(Eigen::seqN(i * m_state_len, m_state_len))
             = m_dyn_fn(state_mid, ctrl_mid, time, model);
