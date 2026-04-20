@@ -52,3 +52,36 @@ T interp_linear(const T &xi, const T &xf, const double dt_max, const double dt)
 
     return xi + dt / dt_max * (xf - xi);
 }
+
+/*
+ * Quadratic interpolation using the initial value, midpoint value, and final
+ * value.
+ *
+ * @param xi Initial value.
+ * @param xc Midpoint value.
+ * @param xf Final value.
+ * @param dt_max Time duration from start to end of polynomial.
+ * @param dt Current time from start of polynomial.
+ */
+template <typename T>
+T interp_quad_midpoint(const T &xi,
+                       const T &xc,
+                       const T &xf,
+                       const double dt_max,
+                       const double dt)
+{
+    if ((dt < 0) || (dt > dt_max)) {
+        std::ostringstream os;
+        os << "interp_quad_midpoint(). dt out of bounds. dt_max = " << dt_max
+           << ", dt = " << dt;
+        throw std::invalid_argument(os.str());
+    }
+
+    const double s = dt / dt_max;
+    /*
+     * Reference: Kelly, "An Introduction to Trajectory Optimization:
+     * How to Do Your Own Direct Collocation".
+     */
+    return (2.0 * s * s - 3.0 * s + 1.0) * xi + (4.0 * s - 4.0 * s * s) * xc
+           + (2.0 * s * s - s) * xf;
+}

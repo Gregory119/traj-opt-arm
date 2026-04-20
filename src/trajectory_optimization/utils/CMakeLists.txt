@@ -1,5 +1,5 @@
 # create library
-add_library(traj_utils STATIC trapezoidal_traj_extractor.cpp save_trajectory.cpp)
+add_library(traj_utils STATIC trapezoidal_traj_extractor.cpp save_trajectory.cpp hs_traj_extractor.cpp)
 target_link_libraries(traj_utils PUBLIC Eigen3::Eigen pinocchio::pinocchio splines rapidcsv ifopt::ifopt_ipopt)
 
 # Specify the include directories

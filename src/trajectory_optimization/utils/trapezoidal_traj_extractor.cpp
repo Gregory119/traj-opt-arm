@@ -112,7 +112,11 @@ QuadraticSpline TrapezoidalTrajExtractor::createStateSpline()
         state_grad_vals.push_back(dstate_dt);
     }
 
-    return QuadraticSpline(state_vals, state_grad_vals, m_start_time, m_dur);
+    return QuadraticSpline(state_vals,
+                           state_grad_vals,
+                           QuadraticSpline::ConstraintType::Gradient,
+                           m_start_time,
+                           m_dur);
 }
 
 LinearSpline TrapezoidalTrajExtractor::createDynSpline()

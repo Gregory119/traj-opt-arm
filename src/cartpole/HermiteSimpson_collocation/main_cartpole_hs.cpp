@@ -10,8 +10,10 @@
 
 #include "control_effort_hs_cost.hpp"
 #include "hermite_simpson_collocation_constraints.hpp"
+#include "hs_traj_extractor.hpp"
 #include "pinocchio/algorithm/aba-derivatives.hpp"
 #include "pinocchio/parsers/urdf.hpp"
+#include "save_trajectory.hpp"
 #include "trajectory_variables.hpp"
 
 namespace pin = pinocchio;
@@ -299,226 +301,12 @@ void guessStateTraj(const int state_len,
         if (k < num_segments) {
             auto state_mid_k
                 = state_mid_init(Eigen::seqN(k * state_len, state_len));
-            alpha_mid
-                = (static_cast<double>(k) + 0.5) / num_segments state_mid_k
-                = alpha_mid * (state_start - state_end) + state_start;
+            const double alpha_mid
+                = (static_cast<double>(k) + 0.5) / num_segments;
+            state_mid_k = alpha_mid * (state_start - state_end) + state_start;
         }
     }
     return;
-}
-
-Eigen::VectorXd createStateGradTimeVars(
-    const double start_time,
-    const Eigen::VectorXd &traj_state_vars,
-    const Eigen::VectorXd &traj_state_mid_vars,
-    const int state_len,
-    const Eigen::VectorXd &traj_control_vars,
-    const Eigen::VectorXd &traj_control_mid_vars,
-    const int control_len,
-    const double dt_segment,
-    const pin::Model &model)
-{
-    const int num_segments = traj_state_mid_vars.size() / state_len;
-    Eigen::VectorXd traj_dstate_dt_vars
-        = Eigen::VectorXd::Zero((2 * num_segments + 1) * state_len);
-
-    for (int k = 0; k < num_segments; ++k) {
-        const double tk = start_time + k * dt_segment;
-        const double tc = tk + 0.5 * dt_segment;
-
-        const Eigen::VectorXd xk
-            = traj_state_vars(Eigen::seqN(k * state_len, state_len));
-        const Eigen::VectorXd uk
-            = traj_control_vars(Eigen::seqN(k * control_len, control_len));
-        // center of segment
-        const Eigen::VectorXd xc
-            = traj_state_mid_vars(Eigen::seqN(k * state_len, state_len));
-        const Eigen::VectorXd uc
-            = traj_control_mid_vars(Eigen::seqN(k * control_len, control_len));
-        // start point of segment derivative
-        traj_dstate_dt_vars(Eigen::seqN((2 * k) * state_len, state_len))
-            = cartpoleDyn(xk, uk, tk, model);
-        // midpoint of segment derivative
-        traj_dstate_dt_vars(Eigen::seqN((2 * k + 1) * state_len, state_len))
-            = cartpoleDyn(xc, uc, tc, model);
-    }
-
-    const int N = num_segments;
-    const double tN = start_time + N * dt_segment;
-    const Eigen::VectorXd xN
-        = traj_state_vars(Eigen::seqN(N * state_len, state_len));
-    const Eigen::VectorXd uN
-        = traj_control_vars(Eigen::seqN(N * control_len, control_len));
-    // endpoint of segment derivative
-    traj_dstate_dt_vars(Eigen::seqN((2 * N) * state_len, state_len))
-        = cartpoleDyn(xN, uN, tN, model);
-
-    return traj_dstate_dt_vars;
-}
-
-CubicSpline createStateSpline(const double start_time,
-                              const double traj_dur,
-                              const Eigen::VectorXd &traj_state_vars,
-                              const int state_len,
-                              const Eigen::VectorXd &traj_dstate_dt_vars)
-{
-    std::vector<Eigen::VectorXd> state_vals;
-    std::vector<Eigen::VectorXd> state_grad_vals;
-
-    const int num_state_vecs = traj_state_vars.size() / state_len;
-    for (int i = 0; i < num_state_vecs; ++i) {
-        const Eigen::VectorXd state
-            = traj_state_vars(Eigen::seqN(i * state_len, state_len));
-
-        // derivative vector
-        const Eigen::VectorXd dstate_dt
-            = traj_dstate_dt_vars(Eigen::seqN((2 * i) * state_len, state_len));
-
-        state_vals.push_back(state);
-        state_grad_vals.push_back(dstate_dt);
-    }
-
-    return CubicSpline(state_vals, state_grad_vals, start_time, traj_dur);
-}
-
-QuadraticSpline createStateGradTimeSpline(
-    const double start_time,
-    const double traj_dur,
-    const Eigen::VectorXd &traj_dstate_dt_vars,
-    const int state_len)
-{
-    std::vector<Eigen::VectorXd> knot_vals;
-    std::vector<Eigen::VectorXd> midpoint_vals;
-
-    const int num_blocks = traj_dstate_dt_vars.size() / state_len;
-    const int num_segments = (num_blocks - 1) / 2;
-    const int num_knots = num_segments + 1;
-
-    for (int i = 0; i < num_knots; ++i) {
-        knot_vals.push_back(
-            traj_dstate_dt_vars(Eigen::seqN((2 * i) * state_len, state_len)));
-    }
-
-    for (int i = 0; i < num_segments; ++i) {
-        midpoint_vals.push_back(traj_dstate_dt_vars(
-            Eigen::seqN((2 * i + 1) * state_len, state_len)));
-    }
-
-    return QuadraticSpline(knot_vals, midpoint_vals, start_time, traj_dur);
-}
-
-// create sample trajectory
-SampleTraj createSampleTraj(const double start_time,
-                            const double sample_period,
-                            const double traj_dur,
-                            const CubicSpline &state_spline,
-                            const QuadraticSpline &dstate_dt_spline)
-{
-    SampleTraj sample_traj;
-    const int num_samples = static_cast<int>(traj_dur / sample_period) + 1;
-
-    for (int i{}; i < num_samples; ++i) {
-        const double time = i * sample_period + start_time;
-        const Eigen::VectorXd state = state_spline.getValue(time);
-        const Eigen::VectorXd dstate_dt = dstate_dt_spline.getValue(time);
-        sample_traj.push_back(
-            {.time = time,
-             .q = state(Eigen::seqN(0, state.size() / 2)),
-             .dq = state(Eigen::seqN(state.size() / 2, state.size() / 2)),
-             .ddq
-             = dstate_dt(Eigen::seqN(state.size() / 2, state.size() / 2))});
-    }
-    return sample_traj;
-}
-
-// save sample trajectory to file
-void saveSampleTrajCsv(const std::string &filename,
-                       const SampleTraj &sample_traj)
-{
-    // time | q(0) | q(1) | ... | q(n-1)
-    rapidcsv::Document doc{};
-
-    // create header
-    doc.InsertColumn(0, std::vector<double>(), "time");
-    std::array<std::string, 3> prefixes = {"q", "dq", "ddq"};
-    for (int i{}; i < prefixes.size(); ++i) {
-        for (int j{}; j < sample_traj[0].q.size(); ++j) {
-            std::ostringstream os;
-            os << prefixes[i] << j;
-            doc.InsertColumn(i * sample_traj[0].q.size() + j + 1,
-                             std::vector<double>(),
-                             os.str());
-        }
-    }
-
-    // fill in data in rows
-    for (int i{}; i < sample_traj.size(); ++i) {
-        std::vector<double> row_data;
-        const TrajElement &e = sample_traj.at(i);
-        row_data.push_back(e.time);
-        row_data.insert(row_data.cend(), e.q.cbegin(), e.q.cend());
-        row_data.insert(row_data.cend(), e.dq.cbegin(), e.dq.cend());
-        row_data.insert(row_data.cend(), e.ddq.cbegin(), e.ddq.cend());
-        doc.InsertRow(i, row_data);
-    }
-    doc.Save(filename);
-}
-
-SampleTraj createCollocationTraj(const double start_time,
-                                 const double dt_segment,
-                                 const Eigen::VectorXd &traj_state_vars,
-                                 const Eigen::VectorXd &traj_state_mid_vars,
-                                 const int state_len,
-                                 const Eigen::VectorXd &traj_control_vars,
-                                 const Eigen::VectorXd &traj_control_mid_vars,
-                                 const int control_len,
-                                 const pin::Model &model)
-{
-    SampleTraj traj;
-    const int num_segments = traj_state_mid_vars.size() / state_len;
-    // traj.reserve(2 * num_segments + 1);
-
-    for (int k = 0; k < num_segments; ++k) {
-        const double tk = start_time + k * dt_segment;
-        const double tc = tk + 0.5 * dt_segment;
-
-        const Eigen::VectorXd xk
-            = traj_state_vars(Eigen::seqN(k * state_len, state_len));
-        const Eigen::VectorXd uk
-            = traj_control_vars(Eigen::seqN(k * control_len, control_len));
-        const Eigen::VectorXd fk = cartpoleDyn(xk, uk, tk, model);
-
-        traj.push_back({.time = tk,
-                        .q = xk(Eigen::seqN(0, state_len / 2)),
-                        .dq = xk(Eigen::seqN(state_len / 2, state_len / 2)),
-                        .ddq = fk(Eigen::seqN(state_len / 2, state_len / 2))});
-
-        const Eigen::VectorXd xc
-            = traj_state_mid_vars(Eigen::seqN(k * state_len, state_len));
-        const Eigen::VectorXd uc
-            = traj_control_mid_vars(Eigen::seqN(k * control_len, control_len));
-        const Eigen::VectorXd fc = cartpoleDyn(xc, uc, tc, model);
-
-        traj.push_back({.time = tc,
-                        .q = xc(Eigen::seqN(0, state_len / 2)),
-                        .dq = xc(Eigen::seqN(state_len / 2, state_len / 2)),
-                        .ddq = fc(Eigen::seqN(state_len / 2, state_len / 2))});
-    }
-
-    const int N = num_segments;
-    const double tN = start_time + N * dt_segment;
-    const Eigen::VectorXd xN
-        = traj_state_vars(Eigen::seqN(N * state_len, state_len));
-    const Eigen::VectorXd uN
-        = traj_control_vars(Eigen::seqN(N * control_len, control_len));
-    const Eigen::VectorXd fN = cartpoleDyn(xN, uN, tN, model);
-
-    traj.push_back({.time = tN,
-                    .q = xN(Eigen::seqN(0, state_len / 2)),
-                    .dq = xN(Eigen::seqN(state_len / 2, state_len / 2)),
-                    .ddq = fN(Eigen::seqN(state_len / 2, state_len / 2))});
-
-    return traj;
 }
 
 int main(int argc, char **argv)
@@ -704,59 +492,8 @@ int main(int argc, char **argv)
     std::cout << "Simpson defect constraint values:" << std::endl;
     std::cout << simpson_constraints->GetValues().transpose() << std::endl;
 
-    /*
-    ///////////////////////////////////////////////////////////////////////
-    // Save solution to file
-    //////////////////////////////////////////////////////////////////////
-    const Eigen::VectorXd traj_dstate_dt_vars
-        = createStateGradTimeVars(start_time,
-                                  traj_state_vars->GetValues(),
-                                  state_len,
-                                  traj_control_vars->GetValues(),
-                                  control_len,
-                                  dt_segment,
-                                  model);
-    const SampleTraj coll_traj
-        = createCollocationTraj(start_time,
-                                dt_segment,
-                                traj_state_vars->GetValues(),
-                                state_len,
-                                traj_dstate_dt_vars);
-
-    saveSampleTrajCsv("nlp-solution-HermiteSimpson-cartpole.csv", coll_traj);
-
-    ///////////////////////////////////////////////////////////////////////
-    // Create spline and sample trajectory and save to file
-    //////////////////////////////////////////////////////////////////////
-    // create quadratic spline
-    const QuadraticSpline state_spline
-        = createStateSpline(start_time,
-                            traj_dur,
-                            traj_state_vars->GetValues(),
-                            state_len,
-                            traj_dstate_dt_vars);
-
-    const LinearSpline dstate_dt_spline
-        = createStateGradTimeSpline(start_time,
-                                    traj_dur,
-                                    traj_dstate_dt_vars,
-                                    state_len);
-
-    // create sample trajectory
-    const double sample_period = 0.020;
-    const SampleTraj sample_traj = createSampleTraj(start_time,
-                                                    sample_period,
-                                                    traj_dur,
-                                                    state_spline,
-                                                    dstate_dt_spline);
-
-    // save sample trajectory to file
-    saveSampleTrajCsv("sample-traj-HermiteSimpson-cartpole.csv", sample_traj);
-
-    return 0;
-    */
     const double start_time = 0.0;
-    const double sample_period = dt_segment / 10.0;
+    const double sample_period = 0.020;
 
     const Eigen::VectorXd solved_state_vars = traj_state_vars->GetValues();
     const Eigen::VectorXd solved_state_mid_vars
@@ -765,48 +502,35 @@ int main(int argc, char **argv)
     const Eigen::VectorXd solved_control_mid_vars
         = traj_control_mid_vars->GetValues();
 
-    const Eigen::VectorXd traj_dstate_dt_vars
-        = createStateGradTimeVars(start_time,
-                                  solved_state_vars,
-                                  solved_state_mid_vars,
-                                  state_len,
-                                  solved_control_vars,
-                                  solved_control_mid_vars,
-                                  control_len,
-                                  dt_segment,
-                                  model);
+    ///////////////////////////////////////////////////////////////////////
+    // Extract/create trajectories and save to files
+    //////////////////////////////////////////////////////////////////////
+    HermSimpTrajExtractor traj_extractor(start_time,
+                                         traj_dur,
+                                         traj_state_vars->GetValues(),
+                                         traj_state_mid_vars->GetValues(),
+                                         state_len,
+                                         traj_control_vars->GetValues(),
+                                         traj_control_mid_vars->GetValues(),
+                                         control_len,
+                                         dt_segment,
+                                         model,
+                                         cartpoleDyn);
+    saveDiscreteJointStateTrajCsv(
+        "collocation-state-traj-hermite-simpson-cartpole.csv",
+        traj_extractor.createCollocationStateTraj(model));
+    saveDiscreteJointDataTrajCsv(
+        "collocation-ctrl-traj-hermite-simpson-cartpole.csv",
+        traj_extractor.createCollocationCtrlTraj(model));
 
-    const CubicSpline state_spline = createStateSpline(start_time,
-                                                       traj_dur,
-                                                       solved_state_vars,
-                                                       state_len,
-                                                       traj_dstate_dt_vars);
-
-    const QuadraticSpline dstate_dt_spline
-        = createStateGradTimeSpline(start_time,
-                                    traj_dur,
-                                    traj_dstate_dt_vars,
-                                    state_len);
-
-    const SampleTraj sample_traj = createSampleTraj(start_time,
-                                                    sample_period,
-                                                    traj_dur,
-                                                    state_spline,
-                                                    dstate_dt_spline);
-
-    const SampleTraj collocation_traj
-        = createCollocationTraj(start_time,
-                                dt_segment,
-                                solved_state_vars,
-                                solved_state_mid_vars,
-                                state_len,
-                                solved_control_vars,
-                                solved_control_mid_vars,
-                                control_len,
-                                model);
-
-    saveSampleTrajCsv("cartpole_hs_sample_traj.csv", sample_traj);
-    saveSampleTrajCsv("cartpole_hs_collocation_traj.csv", collocation_traj);
+    // save sample trajectory to file
+    // const double sample_period = 0.020;
+    saveDiscreteJointStateTrajCsv(
+        "sample-state-traj-hermite-simpson-cartpole.csv",
+        traj_extractor.createSampledStateTraj(sample_period));
+    saveDiscreteJointDataTrajCsv(
+        "sample-ctrl-traj-hermite-simpson-cartpole.csv",
+        traj_extractor.createSampledCtrlTraj(sample_period));
 
     return 0;
 }
