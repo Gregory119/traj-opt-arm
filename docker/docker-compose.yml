@@ -28,7 +28,7 @@ services:
     devices:
       # set the SERIAL_DEV_MAP to "/dev/ttyACM0:/dev/ttyACM0" when hardware is
       # connected
-      - ${SERIAL_DEVICE:-/dev/null:/dev/null}
+      - ${SERIAL_DEV_MAP:-/dev/null:/dev/null}
 
 # Refs:
 # - GUI with docker: https://www.howtogeek.com/devops/how-to-run-gui-applications-in-a-docker-container/

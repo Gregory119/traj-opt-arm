@@ -1,6 +1,7 @@
 #include <iostream>
 #include <numbers>
 #include <pinocchio/parsers/mjcf.hpp>
+#include <so101_bus.hpp>
 
 #include <ifopt/ipopt_solver.h>
 #include <ifopt/problem.h>
@@ -8,6 +9,7 @@
 #include "control_effort_trapezoidal_cost.hpp"
 #include "robot_dynamics.hpp"
 #include "save_trajectory.hpp"
+#include "simulator.hpp"
 #include "trajectory_variables.hpp"
 #include "trapezoidal_collocation_constraints.hpp"
 #include "trapezoidal_traj_extractor.hpp"
@@ -41,11 +43,15 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
             // path bounds
 
             // joint positions path bounds
-            for (int j{}; j < state_len/2; ++j){
-                bounds.push_back({-3.0/4.0 * std::numbers::pi, 3.0/4.0 * std::numbers::pi});
+            for (int j{}; j < state_len / 2 - 1; ++j) {
+                bounds.push_back({-1.0 / 4.0 * std::numbers::pi,
+                                  1.0 / 4.0 * std::numbers::pi});
             }
+            // end effector path bounds
+            bounds.push_back({0.0, 2.25});
+            
             // joint velocity path bounds
-            for (int j{}; j < state_len/2; ++j){
+            for (int j{}; j < state_len / 2; ++j) {
                 bounds.push_back({-ifopt::inf, ifopt::inf});
             }
         }
@@ -83,11 +89,12 @@ Eigen::VectorXd guessStateTraj(const int state_len,
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        std::cout << "Path to model required." << std::endl;
+    if (argc != 3) {
+        std::cout << "Path to model and calibration file required (in this order)." << std::endl;
         return 0;
     }
-
+    const std::string calibration_file_path(argv[2]);
+    
     // Load the urdf model
     const std::string mj_filename = argv[1];
     pin::Model model;
@@ -104,7 +111,7 @@ int main(int argc, char **argv)
     // state bounds
     const int state_len = 6 * 2;
     const int num_state_vars = (num_segments + 1) * state_len;
-    const Eigen::VectorXd state_end{{std::numbers::pi / 2,
+    const Eigen::VectorXd state_end{{-std::numbers::pi / 4,
                                      0.0,
                                      0.0,
                                      0.0,
@@ -117,10 +124,8 @@ int main(int argc, char **argv)
                                      0.0,
                                      0.0}};
     const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
-    ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
-                                                                state_len,
-                                                                state_start,
-                                                                state_end);
+    ifopt::Component::VecBound state_bounds
+        = createStateBounds(num_state_vars, state_len, state_start, state_end);
 
     // init guess for state variables
     auto state_init
@@ -128,13 +133,13 @@ int main(int argc, char **argv)
     auto traj_state_vars
         = std::make_shared<TrajectoryVariables>("traj_state_vars",
                                                 std::move(state_init),
-                                                std::move(state_bounds));
+                                                state_bounds);
     nlp.AddVariableSet(traj_state_vars);
 
     // control bounds
     const int control_len = 6;
     const int num_control_vars = control_len * (num_segments + 1);
-    const double rated_torque_kgcm = 10;
+    const double rated_torque_kgcm = 10 / 1.2;
     const double gravity = 9.81;
     const double max_control_force = rated_torque_kgcm * gravity / 100.0;
     ifopt::Component::VecBound control_bounds
@@ -145,7 +150,7 @@ int main(int argc, char **argv)
     auto traj_control_vars
         = std::make_shared<TrajectoryVariables>("traj_control_vars",
                                                 std::move(control_init),
-                                                std::move(control_bounds));
+                                                control_bounds);
     nlp.AddVariableSet(traj_control_vars);
 
     // add constraints
@@ -233,12 +238,59 @@ int main(int argc, char **argv)
 
     // save sample trajectory to file
     const double sample_period = 0.020;
-    saveDiscreteJointStateTrajCsv(
-        "sample-state-traj-trapezoidal-so101.csv",
-        traj_extractor.createSampledStateTraj(sample_period));
+    const DiscreteJointStateTraj sampled_state_traj
+        = traj_extractor.createSampledStateTraj(sample_period);
+    saveDiscreteJointStateTrajCsv("sample-state-traj-trapezoidal-so101.csv",
+                                  sampled_state_traj);
     saveDiscreteJointDataTrajCsv(
         "sample-ctrl-traj-trapezoidal-so101.csv",
         traj_extractor.createSampledCtrlTraj(sample_period));
+
+    // save bounds
+    saveColBoundsCsv("state-traj-bounds-trapezoidal-so101.csv",
+                     state_bounds,
+                     state_len,
+                     start_time,
+                     traj_dur);
+    saveColBoundsCsv("ctrl-traj-bounds-trapezoidal-so101.csv",
+                     control_bounds,
+                     control_len,
+                     start_time,
+                     traj_dur);
+
+    ///////////////////////////////////////////////////////////////////////
+    // Send trajectory to simulated robot
+    //////////////////////////////////////////////////////////////////////
+    Simulator::getInstance()->setCsvRecordFileName("sim-record-state-traj-trapezoidal-so101.csv");
+    Simulator::getInstance()->setTrajectory(sampled_state_traj);
+
+    Simulator::getInstance()->run();
+
+    ///////////////////////////////////////////////////////////////////////
+    // Send trajectory to physical arm
+    //////////////////////////////////////////////////////////////////////
+    if (false) {
+        return 0;
+    }
+
+    Calibration calibration(calibration_file_path);
+    SO101Bus::Config cfg(calibration);
+    cfg.record_timing_stats = true;
+
+    SO101Bus bus(cfg);
+    if (!bus.connect()) {
+        std::cerr << "failed to connect to " << cfg.device << "\n";
+        return 0;
+    }
+
+    DiscreteJointStateTraj meas_traj;
+    if (!bus.execute_traj_full(sampled_state_traj, PosUnit::RADIAN, meas_traj)) {
+        std::cerr << "trajectory execution failed\n";
+        return 2;
+    }
+
+    saveDiscreteJointStateTrajCsv("hw-record-state-traj-trapezoidal-so101.csv",
+                                  meas_traj);
 
     return 0;
 }

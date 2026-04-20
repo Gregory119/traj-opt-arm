@@ -6,8 +6,11 @@
 class PeriodicSimTimer
 {
 public:
+    using Fn
+        = std::function<void(PeriodicSimTimer &timer, const double sim_time)>;
+
     PeriodicSimTimer(const double period,
-                     const std::function<void(PeriodicSimTimer &)> &cb,
+                     const Fn &cb,
                      const bool enable = true);
 
     void update(const double sim_time);
@@ -16,9 +19,14 @@ public:
     // unchanged
     void reset(const std::optional<bool> &enable = std::nullopt);
 
+    double getPeriod() const
+    {
+        return m_period;
+    }
+
 private:
     bool m_enable = true;
     const double m_period;
     std::optional<double> m_last_trigger_time;
-    const std::function<void(PeriodicSimTimer &)> m_cb;
+    const Fn m_cb;
 };

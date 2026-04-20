@@ -2,12 +2,14 @@
 find_package(mujoco REQUIRED)
 find_package(glfw3 REQUIRED)
 
-add_executable(sim_arm main.cpp simulator.cpp periodic_sim_timer.cpp )
-target_include_directories(sim_arm PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} )
+# sim library
+add_library(sim STATIC simulator.cpp periodic_sim_timer.cpp)
+target_include_directories(sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} )
+target_link_libraries(sim mujoco::mujoco glfw traj_utils)
+
+# sim executeable
+add_executable(sim_arm main.cpp)
 target_link_libraries(
   sim_arm
-  mujoco::mujoco
-  glfw
-  ipopt
-  traj_utils
+  sim
 )

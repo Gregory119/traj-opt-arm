@@ -1,5 +1,6 @@
 #include "so101_bus.hpp"
 
+#include <cassert>
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -35,7 +36,7 @@ static uint8_t checksum_feetech(const uint8_t* body_no_header, size_t n) {
 // this function writes raw bytes to fd(a file descriptor which serves as a destination for the serial port)
 // buf is a pointer to the first byte to transmit, starting with 0xFF, 0xFF, ... 
 // n is number of bytes to transmit
-static bool write_all(int fd, const uint8_t* buf, size_t n) {
+[[nodiscard]] static bool write_all(int fd, const uint8_t* buf, size_t n) {
 
     while (n > 0) { //loop through all bytes
         ssize_t w = ::write(fd, buf, n); // sys call to write to /dev/ttyACM0 as if it were a file
@@ -79,12 +80,10 @@ static inline uint8_t hi(uint16_t v) { return static_cast<uint8_t>((v >> 8) & 0x
 
 // SO101Bus class handling lifecycle / connection
 
-SO101Bus::SO101Bus() : SO101Bus(Config{}) {} //delegating default constructor for SO101_Bus and configuration classes
-SO101Bus::SO101Bus(Config cfg) : cfg_(std::move(cfg)) {} //delegating parameterized constructor for SO101_Bus and 
-                                                        // configuration classes
-
-void SO101Bus::set_config(const Config& cfg) { //setter for the particular configuration
-  cfg_ = cfg;
+SO101Bus::SO101Bus(Config cfg)
+    : cfg_(std::move(cfg))
+{
+    assert(cfg_.calibration.size() == cfg_.ids.size());
 }
 
 bool SO101Bus::connect() {
@@ -95,22 +94,19 @@ bool SO101Bus::connect() {
     return false;
   }
 
-  //if flag is set to true, ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
+  // ping all servos using the file descriptor, set of servo ids, and allowed time before triggering timeout
   // return false if one doesn't reply
-  if(cfg_.ping_on_connect){
-      if (!SO101Bus::ping_all()) {
-        std::fprintf(stderr, "one or more servos did not reply to ping\n");
-        port_.close();
-        return false;
-      }
+  if (!SO101Bus::ping_all()) {
+    std::fprintf(stderr, "one or more servos did not reply to ping\n");
+    port_.close();
+    return false;
   }
-  return true;
-}
 
-// overloaded function with device parameter that calls connect()
-bool SO101Bus::connect(const std::string& device) {
-  cfg_.device = device;
-  return connect();
+  if (!write_gains()) {
+    return false;
+  }
+
+  return true;
 }
 
 // close port without throwing an exception
@@ -130,7 +126,7 @@ bool SO101Bus::ensure_connected_() {
 bool SO101Bus::ping_all() {
   if (!ensure_connected_()) return false;
   for (uint8_t id : cfg_.ids) {
-    if (!feetech_ping(id, cfg_.read_timeout_ms)) return false;
+    if (!feetech_ping(id, cfg_.rw_timeout_ms)) return false;
   }
   return true;
 }
@@ -158,8 +154,10 @@ bool SO101Bus::read_reply(
 
     // sanity check
     if (timeout_ms < 1) {
-        std::cout << "ERROR: SO101Bus::read_reply() - timeout too small" << std::endl;
-        return false;
+    std::cout
+        << "ERROR: SO101Bus::read_reply() - timeout too small. servo id = "
+        << static_cast<int>(expected_id) << std::endl;
+    return false;
     }
 
     // read the header
@@ -167,11 +165,11 @@ bool SO101Bus::read_reply(
         // return number of bytes read
         ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
         if (k <= 0) {
-            std::cout
-                << "ERROR: SO101Bus::read_reply(). Failed to read "
-                   "header. Either timeout, file descriptor closed, or error."
-                << std::endl;
-            return false;
+        std::cout << "ERROR: SO101Bus::read_reply(). Failed to read "
+                     "header. Either timeout, file descriptor closed, or "
+                     "error. servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
+        return false;
         }
 
         got += static_cast<int>(k);
@@ -186,9 +184,10 @@ bool SO101Bus::read_reply(
     // id check
     if(reply.id != expected_id){
         std::cout
-            <<"ERROR: SO101Bus::read_reply(). Replying servo ID does not match the requested ID or stream misalignment is causing"
-              "the wrong byte to be read as ID. Exiting"
-            << std::endl;
+            << "ERROR: SO101Bus::read_reply(). Replying servo ID does not "
+               "match the requested ID or stream misalignment is causing"
+               "the wrong byte to be read as ID. Exiting. servo id = "
+            << static_cast<int>(expected_id) << std::endl;
         return false;
     }
 
@@ -197,11 +196,11 @@ bool SO101Bus::read_reply(
         // return number of bytes read
         ssize_t k = read_with_timeout(fd, r + got, sizeof(r) - got, timeout_ms);
         if (k <= 0) {
-            std::cout
-                << "ERROR: SO101Bus::read_reply(). Failed to read "
-                   "data and checksum. Either timeout, file descriptor closed, or error."
-                << std::endl;
-            return false;
+        std::cout << "ERROR: SO101Bus::read_reply(). Failed to read "
+                     "data and checksum. Either timeout, file descriptor "
+                     "closed, or error. servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
+        return false;
         }
 
         got += static_cast<int>(k);
@@ -221,15 +220,17 @@ bool SO101Bus::read_reply(
     
     if (checksum_feetech(&r[2] , reply.data_length+1)
         != reply.check_sum) {
-        std::cout << "ERROR: SO101Bus::read_reply(). Checksum match failure."
-                  << std::endl;
+        std::cout << "ERROR: SO101Bus::read_reply(). Checksum match failure. "
+                     "servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
         return false;
     }
 
     // check error
     if (reply.error_status != 0) {
-        std::cout << "ERROR: SO101Bus::read_reply(). Servo in error status."
-                  << std::endl;
+        std::cout << "ERROR: SO101Bus::read_reply(). Servo in error status. "
+                     "servo id = "
+                  << static_cast<int>(expected_id) << std::endl;
         return false;
     }
     return true;
@@ -411,11 +412,8 @@ bool SO101Bus::feetech_read_bytes(uint8_t id, uint8_t start_address,
     return true;
 }
 
-bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int timeout_ms) {
+bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic& out, int timeout_ms) {
     const int fd = port_.fd();
-    if (!out) { errno = EINVAL; return false; } //error code if out address is not valid
-
-
 
     // position documented at 0x38 2 bytes
     const uint8_t START = 0x38;
@@ -425,100 +423,77 @@ bool SO101Bus::feetech_read_state_basic(uint8_t id, ServoStateBasic* out, int ti
 
     uint8_t err = 0xFF; // initialize error byte
     if (!feetech_read_bytes(id, START, tmp, timeout_ms, err)) {
-        out->error = err; // write error code to ServoStateBasic object
+        out.error = err; // write error code to ServoStateBasic object
         return false; // return false when a read fail occurs
     }
-    out->error = err; // copy error byte to ServoStateBasic object
-    if (N) std::memcpy(out->raw, tmp.data(), N);
+    out.error = err; // copy error byte to ServoStateBasic object
+    if (N) std::memcpy(out.raw, tmp.data(), N);
 
-    auto u16 = [&](int idx) -> uint16_t { // 16 bit unsigned int from combined bytes 
-        return (uint16_t)out->raw[idx] | ((uint16_t)out->raw[idx + 1] << 8); // combine low and high bytes into a 16 bit unsinged int
+    auto to_u16 = [&](int idx) -> uint16_t { // 16 bit unsigned int from combined bytes 
+        return (uint16_t)out.raw[idx] | ((uint16_t)out.raw[idx + 1] << 8); // combine low and high bytes into a 16 bit unsinged int
     };
-    auto s16 = [&](int idx) -> int16_t { 
-        return (int16_t)u16(idx); //casts unsigned int into signed
+    auto to_s16 = [&](int idx) -> int16_t { 
+        return (int16_t)to_u16(idx); //casts unsigned int into signed
     };
 
     // mapping
-    out->present_position     = u16(0); // 0x38 to 0x39
-    out->present_speed        = s16(2);  // 0x3A to 0x3B
-    out->present_load         = s16(4); // 0x3C to 0x3D
-    out->present_voltage_raw  = out->raw[6]; // 0x3E
-    out->present_temp_c       = out->raw[7]; // 0x3F
+    out.present_position     = to_u16(0); // 0x38 to 0x39
+    out.present_speed        = to_s16(2);  // 0x3A to 0x3B
+    out.present_load         = to_s16(4); // 0x3C to 0x3D
+    out.present_voltage_raw  = out.raw[6]; // 0x3E
+    out.present_temp_c       = out.raw[7]; // 0x3F
 
     return true;
 }
 
-bool SO101Bus::read_all_states(std::array<ServoStateBasic, 6>* out, int timeout_ms) {
-  if (!out) { errno = EINVAL; return false; }
-
-  for (int j = 0; j < 6; ++j) {
-    if (!feetech_read_state_basic(cfg_.ids[j], &(*out)[j], timeout_ms)) {
-      return false;
+bool SO101Bus::read_all_states(const int timeout_ms,
+                               const PosUnit unit,
+                               Eigen::VectorXd &pos,
+                               Eigen::VectorXd &vel)
+{
+    for (int j = 0; j < 6; ++j) {
+        ServoStateBasic state;
+        if (!feetech_read_state_basic(cfg_.ids[j], state, timeout_ms)) {
+            return false;
+        }
+        pos(j) = cfg_.calibration.ticToPos(state.present_position,
+                                           cfg_.ids[j],
+                                           unit);
+        // although the speed measurement is in tics per second, the conversion
+        // to unit per second is the same as the position conversion
+        vel(j)
+            = cfg_.calibration.ticToPos(state.present_speed, cfg_.ids[j], unit);
     }
-  }
-  return true;
+    return true;
 }
 
-
-
-// map 
-static std::vector<uint16_t> robot_mapping(int id, std::vector<uint16_t> v) {
-  // servo position ranges for counter clockwise rotation
-  // index 0 unused
-  constexpr auto& kRanges = SO101Bus::tick_Pos_Range_By_Id;
-
-  // degree limits
-  constexpr double kDegMin = 0.0;
-  constexpr double kDegMax = 180.0;
-
-  auto map_one = [&](int sid, uint16_t in) -> uint16_t {
-    // already in servo units
-    if (in > 18000u) return in;
-
-    if (sid < 1 || sid > 6) return in;
-
-    const double deg = std::clamp(in / 100.0, kDegMin, kDegMax);
-    const double t = (deg - kDegMin) / (kDegMax - kDegMin);
-
-    const auto& r = kRanges[sid];
-
-    const double pos = static_cast<double>(r.pos_min) +
-                       t * (static_cast<double>(r.pos_max - r.pos_min));
-    const long p = std::lround(pos);
-    const long lo = std::min<long>(r.pos_min, r.pos_max);
-    const long hi = std::max<long>(r.pos_min, r.pos_max);
-    return static_cast<uint16_t>(std::clamp<long>(p, std::max(0L, lo), std::min(65535L, hi)));
-  };
-
-  // map all 6 servos
-  if (id == 0 && v.size() >= 6) {
-    for (int sid = 1; sid <= 6; ++sid) {
-      v[(size_t)(sid - 1)] = map_one(sid, v[(size_t)(sid - 1)]);
+bool SO101Bus::write_gains()
+{
+    for (int sid : cfg_.ids) {
+        const bool ret
+            = feetech_write_byte(sid, 0x15, cfg_.p, cfg_.rw_timeout_ms)
+              && feetech_write_byte(sid, 0x17, cfg_.i, cfg_.rw_timeout_ms)
+              && feetech_write_byte(sid, 0x16, cfg_.d, cfg_.rw_timeout_ms);
+        if (!ret) {
+            return ret;
+        }
     }
-    return v;
-  }
-
-  // map a single servo
-  if (id >= 1 && id <= 6) {
-    if (!v.empty()) v[0] = map_one(id, v[0]);
-    return v;
-  }
-
-  // if 6 values , take as servos 1-6
-  if (v.size() >= 6) {
-    for (int sid = 1; sid <= 6; ++sid) {
-      v[(size_t)(sid - 1)] = map_one(sid, v[(size_t)(sid - 1)]);
-    }
-  }
-
-  return v;
+    return true;
 }
-
-
-//This function uses  the 'SYNC WRITE' functionality in the message protocol, which sends a single packet containing the write data for all servos instead of one packet per servo.
 
 bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeout_ms) {
   if (!ensure_connected_()) return false;
+
+  // check position is in range and return false if not
+  for (int sid : cfg_.ids) {
+    if (!cfg_.calibration.inRangeTic(pos[sid - 1], sid)) {
+      std::cout
+          << "write_all_positions() - target tick position out of range. pos="
+          << static_cast<int>(pos[sid - 1]) << ", sid=" << sid << std::endl;
+      return false;
+    }
+  }
+
   const int fd = port_.fd();
   const auto& ids = cfg_.ids;
   constexpr uint8_t kBroadcastId = 0xFE;
@@ -556,106 +531,14 @@ bool SO101Bus::write_all_positions(const std::array<uint16_t, 6>& pos, int timeo
                                          &err);
   };
 
-  // servo bounds
-  // use robot_mapping(id,{0}) and robot_mapping(id,{18000}) if robot_mapping is implemented
-  auto bounds_for_id = [&](int id) -> std::pair<uint16_t, uint16_t> {
-    // fallback mapping
-    if (id < 1 || id > 6) return {0, 0};
-
-    const auto& r = SO101Bus::tick_Pos_Range_By_Id[(size_t)id];
-    uint16_t e0 = static_cast<uint16_t>(std::clamp<int>(r.pos_min, 0, 65535));
-    uint16_t e1 = static_cast<uint16_t>(std::clamp<int>(r.pos_max, 0, 65535));
-
-    // if robot_mapping() exists
-    const auto m0   = robot_mapping(id, std::vector<uint16_t>{0});
-    const auto m180 = robot_mapping(id, std::vector<uint16_t>{18000});
-    const bool mapping_looks_real =
-        (m0.size() == 1 && m180.size() == 1 && !(m0[0] == 0 && m180[0] == 18000));
-    if (mapping_looks_real) { e0 = m0[0]; e1 = m180[0]; }
-
-    uint16_t loB = std::min(e0, e1);
-    uint16_t hiB = std::max(e0, e1);
-
-    // apply margin
-    if (hiB > loB + 2 * kSoftMarginUnits) {
-      loB = static_cast<uint16_t>(loB + kSoftMarginUnits);
-      hiB = static_cast<uint16_t>(hiB - kSoftMarginUnits);
-    }
-    return {loB, hiB};
-  };
-
-  auto clamp_to_bounds = [&](int id, uint16_t p) -> uint16_t {
-    const auto [loB, hiB] = bounds_for_id(id);
-    return static_cast<uint16_t>(std::clamp<int>((int)p, (int)loB, (int)hiB));
-  };
-
-
-  // clamp the commanded goal
-  std::array<uint16_t, 6> goal = pos;
-  for (int j = 0; j < 6; ++j) goal[j] = clamp_to_bounds(j + 1, goal[j]);
-
   // send the final goal command
-  return send_sync(goal);
+  return send_sync(pos);
 }
 
-
-// converting TrajElement to servo position
-
-
-static uint16_t traj_value_to_ticks(double v, int joint_index_1to6) {
-
-  constexpr bool kInputIsRadians = false;
- 
-  // bad input
-  if (!std::isfinite(v)) v = 90.0;
-
-  if (std::abs(v) > 360.0) {
-    const long p = std::lround(v);
-    return static_cast<uint16_t>(std::clamp<long>(p, 0L, 65535L));
-  }
-
-  double deg = v;
-
-  // ONLY ACCEPT 0 TO 180 DEGREE ANGLES
-  if (deg < 0.0 || deg > 180.0) {
-    std::fprintf(stderr,
-                 "traj_value_to_ticks: joint %d input %.3f deg out of [0,180]; clamping\n",
-                 joint_index_1to6, deg);
-  }
-  deg = std::clamp(deg, 0.0, 180.0);
-
-  const uint16_t deg_centi =
-      static_cast<uint16_t>(std::clamp<long>(std::lround(deg * 100.0), 0L, 18000L));
-
-  const std::vector<uint16_t> mapped = robot_mapping(joint_index_1to6, std::vector<uint16_t>{deg_centi});
-  return (!mapped.empty()) ? mapped[0] : deg_centi;
-}
-
-
-static bool goals_from_traj_element(const TrajElement& e, std::array<uint16_t, 6>* out_goals) {
-  if (!out_goals) return false;
-  if (e.val.size() < 6) return false;
-
-  for (int j = 0; j < 6; ++j) {
-    (*out_goals)[j] = traj_value_to_ticks(e.val[(size_t)j],(j + 1));
-  }
-  return true;
-}
-
-
-// trajectory execution
-
-// overload for execution using a defined config
-bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj, const SO101Bus::Config& cfg) {
-  SO101Bus tmp(cfg);
-  return tmp.execute_traj_full(traj);
-}
-
-// execute a trajectory expressed as TrajElement waypoints
-// send position only sync writes
-// TrajElement.time field is used only for pacing and scheduling
-// do not write any timeor speed registers
-bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
+bool SO101Bus::execute_traj_full(const DiscreteJointStateTraj &traj,
+                                 const PosUnit pos_unit,
+                                 DiscreteJointStateTraj& meas_traj)
+{
   if (traj.empty()) return true;
 
   if (!ensure_connected_()) return false;
@@ -668,17 +551,15 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
   const auto start = std::chrono::steady_clock::now();
   double max_sample_time_err_ms = 0.0;
 
-  std::array<uint16_t, 6> last_goals{};
-  //bool have_last_goals = false;
+  std::array<uint16_t, 6> last_target_pos_tic{};
 
   for (size_t i = 0; i < traj.size(); ++i) {
-    const TrajElement& e = traj[i];
+    const JointState& e = traj[i];
 
     // sleep until the scheduled send time
     double rel_s = e.time - t0;
     if (rel_s < 0.0) rel_s = 0.0;
-    const auto send_tp = start + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                                   std::chrono::duration<double>(rel_s));
+    const auto send_tp = start + std::chrono::duration<double>(rel_s);
     std::this_thread::sleep_until(send_tp);
     
     if (cfg_.record_timing_stats) {
@@ -688,40 +569,66 @@ bool SO101Bus::execute_traj_full(const std::deque<TrajElement>& traj) {
       if (err_ms > max_sample_time_err_ms) max_sample_time_err_ms = err_ms;
     }
 
-    std::array<uint16_t, 6> goals{};
-    if (!goals_from_traj_element(e, &goals)) {
-      std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu has val.size() < 6\n", i);
-      return false;
-    }
+    // convert target position to tics
+    std::array<uint16_t, 6> target_pos_tic{};
+    std::cout << "sending target positions: [";
+    for (int i{}; i < e.q.size(); ++i) {
+      std::cout << e.q(i);
+      if (!cfg_.calibration.inRangePos(e.q(i), cfg_.ids[i], pos_unit)) {
+            return false;
+      }
+      switch (pos_unit) {
+            case PosUnit::RADIAN:
+                target_pos_tic[i] = cfg_.calibration.posToTic(e.q(i),
+                                                              cfg_.ids[i],
+                                                              PosUnit::RADIAN);
+                break;
 
-    if (!write_all_positions(goals, cfg_.read_timeout_ms)) {
+            case PosUnit::DEGREE:
+                target_pos_tic[i] = cfg_.calibration.posToTic(e.q(i),
+                                                              cfg_.ids[i],
+                                                              PosUnit::DEGREE);
+                break;
+      }
+      std::cout << "(" << target_pos_tic[i] << "), ";
+    }
+    std::cout << "]" << std::endl;
+
+    if (!write_all_positions(target_pos_tic, cfg_.rw_timeout_ms)) {
       std::fprintf(stderr, "execute_traj_full(deque): waypoint %zu sync write failed\n", i);
       return false;
     }
-    last_goals = goals;
+    last_target_pos_tic = target_pos_tic;
 
-    if (cfg_.enable_status_poll) {
-      std::array<ServoStateBasic, 6> st{};
-      if (!read_all_states(&st, cfg_.status_read_timeout_ms)) {
-        std::fprintf(stderr,
-                     "execute_traj_full(deque): read_all_states failed after waypoint %zu\n",
-                     i);
-        return false;
-      }
+    // use timestamp before all reads
+    const std::chrono::duration<double> ts
+        = std::chrono::steady_clock::now() - start;
+
+    JointState js{.time = ts.count(),
+                  .q = Eigen::VectorXd::Zero(cfg_.ids.size()),
+                  .dq = Eigen::VectorXd::Zero(cfg_.ids.size()),
+                  .ddq = Eigen::VectorXd::Zero(cfg_.ids.size())};
+    if (!read_all_states(cfg_.rw_timeout_ms, pos_unit, js.q, js.dq)) {
+      std::fprintf(stderr,
+                   "execute_traj_full(deque): read_all_states failed "
+                   "after waypoint %zu\n",
+                   i);
+      return false;
     }
-      
+    // approximate acceleration using first order derivative of velocity
+    if (!meas_traj.empty()) {
+      js.ddq
+          = (js.dq - meas_traj.back().dq) / (js.time - meas_traj.back().time);
+    }
+
+    meas_traj.push_back(std::move(js));
   }
+
   if (cfg_.record_timing_stats) {
   std::fprintf(stderr, //print sample error, will convert all print statements to std::cout later
              "max sample time error = %.3f ms\n",
              max_sample_time_err_ms);
   }
-
-  if (cfg_.final_settle_ms > 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(cfg_.final_settle_ms));
-  }
-
-
 
   return true;
 }
