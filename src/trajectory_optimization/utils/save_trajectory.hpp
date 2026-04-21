@@ -27,3 +27,10 @@ void saveColBoundsCsv(const std::string &filename,
                       const int n,
                       const double start_time,
                       const double dur);
+
+void saveHermiteSimpsonBoundsCsv(const std::string &filename,
+                                 const ifopt::Component::VecBound &knot_bounds,
+                                 const ifopt::Component::VecBound &midpoint_bounds,
+                                 const int n,
+                                 const double start_time,
+                                 const double dur);

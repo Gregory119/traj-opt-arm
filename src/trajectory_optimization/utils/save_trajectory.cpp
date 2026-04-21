@@ -99,3 +99,66 @@ void saveColBoundsCsv(const std::string &filename,
     }
     doc.Save(filename);
 }
+
+void saveHermiteSimpsonBoundsCsv(const std::string &filename,
+                                 const ifopt::Component::VecBound &knot_bounds,
+                                 const ifopt::Component::VecBound &midpoint_bounds,
+                                 const int n,
+                                 const double start_time,
+                                 const double dur)
+{
+    assert(knot_bounds.size() % n == 0);
+    assert(midpoint_bounds.size() % n == 0);
+
+    const int num_knot_pts = knot_bounds.size() / n;
+    const int num_mid_pts = midpoint_bounds.size() / n;
+
+    assert(num_knot_pts == num_mid_pts + 1);
+    assert(num_mid_pts > 0);
+
+    rapidcsv::Document doc{};
+
+    // create header
+    doc.InsertColumn(0, std::vector<double>(), "time");
+    for (int i{}; i < n; ++i) {
+        std::ostringstream os;
+        os << "x" << i << "_low";
+        doc.InsertColumn(i * 2 + 1, std::vector<double>(), os.str());
+        os.str("");
+        os.clear();
+        os << "x" << i << "_high";
+        doc.InsertColumn(i * 2 + 2, std::vector<double>(), os.str());
+    }
+
+    const double dt = dur / static_cast<double>(num_mid_pts);
+
+    auto insert_bounds_row = [&](const ifopt::Component::VecBound &bounds,
+                                 const int pt_idx,
+                                 const double t,
+                                 const int row_idx) {
+        std::vector<double> row_data;
+        row_data.push_back(t);
+        for (int j{}; j < n; ++j) {
+            row_data.push_back(bounds[pt_idx * n + j].lower_);
+            row_data.push_back(bounds[pt_idx * n + j].upper_);
+        }
+        doc.InsertRow(row_idx, row_data);
+    };
+
+    int row_idx = 0;
+
+    for (int i{}; i < num_mid_pts; ++i) {
+        const double t_knot = start_time + static_cast<double>(i) * dt;
+        const double t_mid = start_time + (static_cast<double>(i) + 0.5) * dt;
+
+        insert_bounds_row(knot_bounds, i, t_knot, row_idx++);
+        insert_bounds_row(midpoint_bounds, i, t_mid, row_idx++);
+    }
+
+    insert_bounds_row(knot_bounds,
+                      num_knot_pts - 1,
+                      start_time + dur,
+                      row_idx++);
+
+    doc.Save(filename);
+}
