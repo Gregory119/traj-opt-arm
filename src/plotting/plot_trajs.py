@@ -173,6 +173,7 @@ def plot_state_traj_comp(path_target_state_traj: Path,
         ax.set_xlabel("time [s]")
         ax.grid(True)
         ax.legend()
+        fig.savefig(f"comp-{algorithm_name}-collocation-{joint_title_names[i]}-trajectory-{name}".lower())
         fig_ax_tuples.append((fig, ax))
     return fig_ax_tuples
 
@@ -289,7 +290,7 @@ def main():
         algorithm_name=args.algorithm
     )
     
-    plt.show()
+   # plt.show()
 
 
 if __name__ == "__main__":    
