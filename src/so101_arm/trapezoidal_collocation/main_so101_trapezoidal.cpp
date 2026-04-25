@@ -1,3 +1,4 @@
+#include <boost/timer/timer.hpp>
 #include <iostream>
 #include <numbers>
 #include <pinocchio/parsers/mjcf.hpp>
@@ -49,7 +50,7 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
             }
             // end effector path bounds
             bounds.push_back({0.0, 2.25});
-            
+
             // joint velocity path bounds
             for (int j{}; j < state_len / 2; ++j) {
                 bounds.push_back({-ifopt::inf, ifopt::inf});
@@ -90,11 +91,13 @@ Eigen::VectorXd guessStateTraj(const int state_len,
 int main(int argc, char **argv)
 {
     if (argc != 3) {
-        std::cout << "Path to model and calibration file required (in this order)." << std::endl;
+        std::cout
+            << "Path to model and calibration file required (in this order)."
+            << std::endl;
         return 0;
     }
     const std::string calibration_file_path(argv[2]);
-    
+
     // Load the urdf model
     const std::string mj_filename = argv[1];
     pin::Model model;
@@ -207,7 +210,10 @@ int main(int argc, char **argv)
     ipopt.SetOption("output_file", "ipopt.out");
 
     // solve
-    ipopt.Solve(nlp);
+    {
+        boost::timer::auto_cpu_timer timer;
+        ipopt.Solve(nlp);
+    }
     nlp.PrintCurrent();
 
     std::cout << "state variables: " << std::endl;
@@ -261,7 +267,8 @@ int main(int argc, char **argv)
     ///////////////////////////////////////////////////////////////////////
     // Send trajectory to simulated robot
     //////////////////////////////////////////////////////////////////////
-    Simulator::getInstance()->setCsvRecordFileName("sim-record-state-traj-trapezoidal-so101.csv");
+    Simulator::getInstance()->setCsvRecordFileName(
+        "sim-record-state-traj-trapezoidal-so101.csv");
     Simulator::getInstance()->setTrajectory(sampled_state_traj);
 
     Simulator::getInstance()->run();
@@ -284,7 +291,9 @@ int main(int argc, char **argv)
     }
 
     DiscreteJointStateTraj meas_traj;
-    if (!bus.execute_traj_full(sampled_state_traj, PosUnit::RADIAN, meas_traj)) {
+    if (!bus.execute_traj_full(sampled_state_traj,
+                               PosUnit::RADIAN,
+                               meas_traj)) {
         std::cerr << "trajectory execution failed\n";
         return 2;
     }

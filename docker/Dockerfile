@@ -53,6 +53,11 @@ RUN echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.asc] http://robot
 RUN apt-get update && apt-get install -qqy robotpkg-py3*-pinocchio
 
 ###################################################
+# install boost
+###################################################
+RUN apt-get update && apt-get -y install libboost-all-dev
+
+###################################################
 # install debug tools
 ###################################################
 RUN apt-get update && apt-get install -y systemd-coredump gdb

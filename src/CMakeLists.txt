@@ -13,6 +13,7 @@ find_package(Threads REQUIRED)
 find_package(ifopt REQUIRED)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(pinocchio REQUIRED)
+find_package(Boost REQUIRED COMPONENTS timer)
 
 # --- manually add IPOPT as a library ---
 add_library(ipopt SHARED IMPORTED)
@@ -54,6 +55,7 @@ FetchContent_Declare(
   json
   URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
 FetchContent_MakeAvailable(json)
+
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/trajectory_optimization)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ipopt)

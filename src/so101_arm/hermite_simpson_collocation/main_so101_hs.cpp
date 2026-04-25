@@ -1,3 +1,4 @@
+#include <boost/timer/timer.hpp>
 #include <iostream>
 #include <numbers>
 #include <pinocchio/parsers/mjcf.hpp>
@@ -305,7 +306,10 @@ int main(int argc, char **argv)
     ipopt.SetOption("output_file", "ipopt.out");
 
     // solve
-    ipopt.Solve(nlp);
+    {
+        boost::timer::auto_cpu_timer timer;
+        ipopt.Solve(nlp);
+    }
     nlp.PrintCurrent();
 
     std::cout << "state variables: " << std::endl;
