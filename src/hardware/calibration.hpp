@@ -45,6 +45,10 @@ public:
                     const int sid,
                     const PosUnit unit = PosUnit::RADIAN) const;
 
+    double ticVelToVel(const int vel_tic,
+                       const int sid,
+                       const PosUnit unit = PosUnit::RADIAN) const;
+
     size_t size() const
     {
         return m_pos_tic_ranges.size();

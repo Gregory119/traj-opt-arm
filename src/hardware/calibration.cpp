@@ -145,6 +145,30 @@ double Calibration::ticToPos(const int pos_tic,
     return pos_unit;
 }
 
+double Calibration::ticVelToVel(const int vel_tic,
+                                const int sid,
+                                const PosUnit unit) const
+{
+    double unit_p_rev{};
+    switch (unit) {
+        case PosUnit::RADIAN:
+            unit_p_rev = 2 * std::numbers::pi;
+            break;
+        case PosUnit::DEGREE:
+            unit_p_rev = 360.0;
+            break;
+    }
+    const double unit_p_tic = unit_p_rev / static_cast<double>(g_tic_p_rev);
+    // zero velocity tic value maps to a zero velocity unit value
+    double vel_unit = vel_tic * unit_p_tic;
+    if (vel_unit < 0.0){
+        // handle strange mapping observed in data
+        vel_unit += 50.0;
+        vel_unit *= -1.0;
+    }
+    return vel_unit;
+}
+
 int Calibration::getZeroTic(const int sid) const
 {
     if (!m_pos_tic_ranges.contains(sid)) {

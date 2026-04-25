@@ -459,10 +459,8 @@ bool SO101Bus::read_all_states(const int timeout_ms,
         pos(j) = cfg_.calibration.ticToPos(state.present_position,
                                            cfg_.ids[j],
                                            unit);
-        // although the speed measurement is in tics per second, the conversion
-        // to unit per second is the same as the position conversion
         vel(j)
-            = cfg_.calibration.ticToPos(state.present_speed, cfg_.ids[j], unit);
+            = cfg_.calibration.ticVelToVel(state.present_speed, cfg_.ids[j], unit);
     }
     return true;
 }
