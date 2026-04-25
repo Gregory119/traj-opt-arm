@@ -24,7 +24,6 @@ namespace pin = pinocchio;
 
 ifopt::Component::VecBound createStateBounds(const int num_state_vars,
                                              const int state_len,
-                                             double d_max,
                                              const Eigen::VectorXd &state_start,
                                              const Eigen::VectorXd &state_end)
 {
@@ -65,8 +64,7 @@ ifopt::Component::VecBound createStateBounds(const int num_state_vars,
 }
 
 ifopt::Component::VecBound createMidpointStateBounds(const int num_state_vars,
-                                                     const int state_len,
-                                                     const double d_max)
+                                                     const int state_len)
 {
     ifopt::Component::VecBound bounds;
     bounds.reserve(num_state_vars);
@@ -139,11 +137,7 @@ int main(int argc, char **argv)
     const double dt_segment = traj_dur / num_segments;
     const double start_time = 0.0;
 
-    // final q0 position
-    const double d = 0.8;
-
     // state bounds
-    const double d_max = 2 * d;
     const int state_len = 6 * 2;
     const int num_state_vars = (num_segments + 1) * state_len;
     const Eigen::VectorXd state_end{{-std::numbers::pi / 4,
@@ -162,7 +156,6 @@ int main(int argc, char **argv)
     const Eigen::VectorXd state_start = Eigen::VectorXd::Zero(state_len);
     ifopt::Component::VecBound state_bounds = createStateBounds(num_state_vars,
                                                                 state_len,
-                                                                d_max,
                                                                 state_start,
                                                                 state_end);
     const auto state_bounds_for_save = state_bounds;
@@ -208,7 +201,7 @@ int main(int argc, char **argv)
     // one per segment
     const int num_state_mid_vars = num_segments * state_len;
     auto state_mid_bounds
-        = createMidpointStateBounds(num_state_mid_vars, state_len, d_max);
+        = createMidpointStateBounds(num_state_mid_vars, state_len);
     const auto state_mid_bounds_for_save = state_mid_bounds;
 
     auto traj_state_mid_vars
@@ -396,7 +389,7 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    saveDiscreteJointStateTrajCsv("hw-record-state-traj-trapezoidal-so101.csv",
+    saveDiscreteJointStateTrajCsv("hw-record-state-traj-hermite-simpson-so101.csv",
                                   meas_traj);
 
     return 0;
