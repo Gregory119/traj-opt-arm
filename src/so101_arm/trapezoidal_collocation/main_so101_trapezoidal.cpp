@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     ifopt::Problem nlp;
     const double start_time = 0.0;
     const double traj_dur = 2.0;
-    const int num_segments = 10;
+    const int num_segments = 20;
     const double dt_segment = traj_dur / num_segments;
 
     // state bounds

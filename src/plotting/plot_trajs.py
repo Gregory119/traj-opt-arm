@@ -181,7 +181,8 @@ def plot_state_traj_comp(path_target_state_traj: Path,
 def plot_ctrl_traj(path_collocation_ctrl_traj: Path,
                    path_sample_ctrl_traj: Path,
                    path_ctrl_bounds_traj: Path,
-                   algorithm_name):
+                   algorithm_name,
+                   name: str):
     df_coll_ctrl_traj = pd.read_csv(path_collocation_ctrl_traj)
     df_sample_ctrl_traj = pd.read_csv(path_sample_ctrl_traj)
     df_ctrl_bounds_traj = pd.read_csv(path_ctrl_bounds_traj)
@@ -214,14 +215,16 @@ def plot_ctrl_traj(path_collocation_ctrl_traj: Path,
 
         # plot bounds
         if not df_low.empty:
-            ax.plot(df_low.time, df_low.iloc[:, 1], 'D', label="min.")
+            ax.plot(df_low.time, df_low.iloc[:, 1],  label="min.")
         if not df_high.empty:
-            ax.plot(df_high.time, df_high.iloc[:, 1], 'D', label="max.")
+            ax.plot(df_high.time, df_high.iloc[:, 1], label="max.")
 
-    ax.set_title(f"{algorithm_name} Collocation Joint Control Trajectory")
+    ax.set_title(f"{algorithm_name} Collocation Joint Control or Torque Trajectory")
     ax.set_xlabel("time [s]")
+    ax.set_ylabel("control or torque [N.m]")
     ax.grid(True)
     ax.legend()
+    fig.savefig(f"control-{algorithm_name}-collocation-trajectory-{name}".lower())
     return (fig, ax)
 
 
@@ -267,6 +270,14 @@ def main():
                                           algorithm_name=args.algorithm,
                                           name="Simulation")
 
+    fig_ax_tuples += plot_ctrl_traj(
+        path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
+        path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
+        path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
+        algorithm_name=args.algorithm,
+        name="Simulation"
+    )
+
     # hardware plots
     
     fig_ax_tuples += plot_state_traj_err(
@@ -280,15 +291,6 @@ def main():
                                           path_true_state_traj=args.traj_data_dir / filename_hw_state_traj,
                                           algorithm_name=args.algorithm,
                                           name="Hardware")
-
-    # control/torque plot
-    
-    fig_ax_tuples += plot_ctrl_traj(
-        path_collocation_ctrl_traj=args.traj_data_dir / filename_collocation_ctrl_traj,
-        path_sample_ctrl_traj=args.traj_data_dir / filename_sample_ctrl_traj,
-        path_ctrl_bounds_traj=args.traj_data_dir / filename_col_ctrl_bounds_traj,
-        algorithm_name=args.algorithm
-    )
     
    # plt.show()
 
